@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">APK Builder</string>
+    <string name="app_title">APK Builder</string>
+    <string name="lang_toggle">中文</string>
+
+    <string name="projects_title">Projects</string>
+    <string name="btn_new_project">New Project</string>
+    <string name="btn_delete_project">Delete</string>
+    <string name="btn_open_project">Open</string>
+    <string name="new_project_hint">Project name</string>
+    <string name="delete_confirm_title">Delete Project</string>
+    <string name="delete_confirm_msg">Delete "%1$s" and all its files?</string>
+    <string name="no_projects">No projects yet. Tap "New Project" to start.</string>
+    <string name="permission_title">Storage Permission</string>
+    <string name="permission_msg">APK Builder needs full storage access to create projects in /apk-project/. Please grant "All files access" in the next screen.</string>
+    <string name="btn_grant">Grant</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="project_created">Project created: %1$s</string>
+    <string name="project_exists">Project already exists</string>
+    <string name="invalid_name">Invalid name (a-z, 0-9, _, -)</string>
+
+    <string name="back_to_list">← Projects</string>
+    <string name="current_project">Project: %1$s</string>
+    <string name="mode_label">Build Mode</string>
+    <string name="mode_html">HTML</string>
+    <string name="mode_java">Java</string>
+    <string name="pkg_label">Package Name</string>
+    <string name="pkg_hint">com.example.myapp</string>
+    <string name="name_label">App Name</string>
+    <string name="name_hint">My App</string>
+    <string name="icon_label">App Icon</string>
+    <string name="btn_pick_icon">Pick Icon</string>
+    <string name="icon_none">No icon selected</string>
+    <string name="icon_selected">Icon: %1$s</string>
+    <string name="perm_label">Permissions</string>
+    <string name="btn_pick_source">Pick Source</string>
+    <string name="source_none">No source selected</string>
+    <string name="source_selected">Source: %1$s</string>
+    <string name="btn_build">Build APK</string>
+    <string name="log_label">Log</string>
+    <string name="btn_copy_log">Copy</string>
+    <string name="btn_clear_log">Clear</string>
+    <string name="btn_test_toolchain">Test toolchain</string>
+    <string name="build_success_title">Build Succeeded</string>
+    <string name="build_success_msg">APK: %1$s\nSize: %2$s</string>
+    <string name="btn_install">Install</string>
+    <string name="btn_open_dir">Open Folder</string>
+    <string name="btn_close">Close</string>
+    <string name="install_permission_required">Please grant "Install unknown apps" permission for this app, then retry.</string>
+    <string name="copied">Log copied</string>
+    <string name="logging_cleared">Log cleared</string>
+    <string name="java_not_supported">Java mode is under development</string>
+    <string name="pick_html_title">Select source file</string>
+    <string name="pick_icon_title">Select icon</string>
+    <string name="pick_java_title">Select .java files (multi)</string>
+    <string name="build_running">Build in progress...</string>
+    <string name="pkg_mismatch">Package mismatch in %1$s: found "%2$s", expected "%3$s"</string>
+    <string name="clean_temp_title">Clean temp files?</string>
+    <string name="clean_temp_msg">Delete the temporary build folder?</string>
+    <string name="btn_yes">Yes</string>
+    <string name="btn_no">No</string>
+    <string name="sw_disable_on_build">Disable buttons during build</string>
+    <string name="sw_clean_temp">Ask to clean temp files after build</string>
+</resources>

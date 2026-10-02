@@ -1,0 +1,31 @@
+# ============ Gradle ============
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ============ Android Studio / IntelliJ ============
+.idea/
+*.iml
+*.iws
+*.ipr
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ============ 本地配置（含 SDK 路径，不应上传） ============
+local.properties
+
+# ============ 日志 ============
+*.log
+build.log
+
+# ============ 系统 ============
+.DS_Store
+Thumbs.db
+*.hprof
+
+# ============ Release 签名（保留 assets 里的默认 debug 签名） ============
+*.jks
+*.keystore
+release-keystore/
+!app/src/main/assets/keystore/debug.p12
