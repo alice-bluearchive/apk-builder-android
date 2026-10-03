@@ -72,62 +72,104 @@ public class EcjCompiler {
         log("EcjClassLoader 已创建");
     }
 
+    /** 准备 lambda-patch.jar，返回文件路径 */
+    private File prepareLambdaPatch() throws Exception {
+        File f = new File(ctx.getFilesDir(), "lambda-patch.jar");
+        if (f.exists() && f.length() > 10_000) return f;
+        log("首次拷贝 lambda-patch.jar ...");
+        try (InputStream is = ctx.getAssets().open("template/lambda-patch.jar");
+             OutputStream os = new FileOutputStream(f)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = is.read(buf)) > 0) os.write(buf, 0, n);
+        }
+        log("lambda-patch.jar 已拷贝: " + f.length() + " bytes");
+        return f;
+    }
+
+    private String buildClasspath(File androidJar) throws Exception {
+        File lambdaPatch = prepareLambdaPatch();
+        return androidJar.getAbsolutePath()
+                + File.pathSeparator
+                + lambdaPatch.getAbsolutePath();
+    }
+
     public boolean compile(File javaFile, File outputDir, File androidJar) throws Exception {
         ensureLoader();
         if (!outputDir.exists()) outputDir.mkdirs();
 
+        String cp = buildClasspath(androidJar);
+
         List<String> argList = new ArrayList<>();
         argList.add("-d");              argList.add(outputDir.getAbsolutePath());
-        argList.add("-cp");             argList.add(androidJar.getAbsolutePath());
+        argList.add("-cp");             argList.add(cp);
         argList.add("-source");         argList.add("1.8");
         argList.add("-target");         argList.add("1.8");
         argList.add("-proc:none");
         argList.add("-nowarn");
         argList.add(javaFile.getAbsolutePath());
 
+        return runEcj(argList);
+    }
+
+    public boolean compileDir(File javaDir, File outputDir, File androidJar) throws Exception {
+        if (javaDir == null || !javaDir.isDirectory()) throw new Exception("源目录不存在");
+        ensureLoader();
+        if (!outputDir.exists()) outputDir.mkdirs();
+
+        String cp = buildClasspath(androidJar);
+
+        List<String> argList = new ArrayList<>();
+        argList.add("-d");              argList.add(outputDir.getAbsolutePath());
+        argList.add("-cp");             argList.add(cp);
+        argList.add("-source");         argList.add("1.8");
+        argList.add("-target");         argList.add("1.8");
+        argList.add("-proc:none");
+        argList.add("-nowarn");
+
+        File[] files = javaDir.listFiles();
+        if (files == null) throw new Exception("源目录为空");
+        int n = 0;
+        for (File f : files) {
+            if (f.getName().endsWith(".java")) {
+                argList.add(f.getAbsolutePath());
+                n++;
+            }
+        }
+        if (n == 0) throw new Exception("没有 .java 文件");
+
+        log("ECJ 编译 " + n + " 个文件");
+        log("  -cp: " + cp);
+
+        boolean ok = runEcj(argList);
+        log("ECJ compileDir 结果: " + ok + " (" + n + " 文件)");
+        return ok;
+    }
+
+    private boolean runEcj(List<String> argList) throws Exception {
         for (String a : argList) log("  arg: " + a);
 
         Class<?> mainClz = ecjLoader.loadClass("org.eclipse.jdt.internal.compiler.batch.Main");
-
         StringWriter outSw = new StringWriter();
         StringWriter errSw = new StringWriter();
 
-        Object mainObj;
-        try {
-            Constructor<?> ctor = mainClz.getConstructor(
-                    PrintWriter.class,
-                    PrintWriter.class,
-                    boolean.class
-            );
-            mainObj = ctor.newInstance(
-                    new PrintWriter(outSw),
-                    new PrintWriter(errSw),
-                    Boolean.FALSE
-            );
-            log("Main 实例已创建");
-        } catch (Throwable t) {
-            log("[ERR] 构造 Main 失败:");
-            dumpThrowable(t);
-            throw new RuntimeException("构造 Main 失败", t);
-        }
+        Constructor<?> ctor = mainClz.getConstructor(
+                PrintWriter.class, PrintWriter.class, boolean.class);
+        Object mainObj = ctor.newInstance(
+                new PrintWriter(outSw), new PrintWriter(errSw), Boolean.FALSE);
 
+        Method compileMethod = mainClz.getMethod("compile", String[].class);
         Object result;
         try {
-            Method compileMethod = mainClz.getMethod("compile", String[].class);
             result = compileMethod.invoke(mainObj, (Object) argList.toArray(new String[0]));
-            log("compile 返回: " + result);
         } catch (Throwable t) {
             log("[ERR] 调用 compile 失败:");
             dumpThrowable(t);
             printCaptured(outSw, errSw);
-            throw new RuntimeException("调用 compile 失败", t);
+            return false;
         }
-
         printCaptured(outSw, errSw);
-
-        boolean ok = Boolean.TRUE.equals(result);
-        log("ECJ compile 结果: " + ok);
-        return ok;
+        return Boolean.TRUE.equals(result);
     }
 
     private void printCaptured(StringWriter outSw, StringWriter errSw) {
@@ -159,46 +201,6 @@ public class EcjCompiler {
         for (String line : sw.toString().split("\n")) log("  " + line);
     }
 
-    public boolean compileDir(File javaDir, File outputDir, File androidJar) throws Exception {
-        if (javaDir == null || !javaDir.isDirectory()) throw new Exception("源目录不存在");
-        ensureLoader();
-        if (!outputDir.exists()) outputDir.mkdirs();
-
-        List<String> argList = new ArrayList<>();
-        argList.add("-d");              argList.add(outputDir.getAbsolutePath());
-        argList.add("-cp");             argList.add(androidJar.getAbsolutePath());
-        argList.add("-source");         argList.add("1.8");
-        argList.add("-target");         argList.add("1.8");
-        argList.add("-proc:none");
-        argList.add("-nowarn");
-
-        File[] files = javaDir.listFiles();
-        if (files == null) throw new Exception("源目录为空");
-        int n = 0;
-        for (File f : files) {
-            if (f.getName().endsWith(".java")) {
-                argList.add(f.getAbsolutePath());
-                n++;
-            }
-        }
-        if (n == 0) throw new Exception("没有 .java 文件");
-
-        for (String a : argList) log("  arg: " + a);
-
-        Class<?> mainClz = ecjLoader.loadClass("org.eclipse.jdt.internal.compiler.batch.Main");
-        StringWriter outSw = new StringWriter();
-        StringWriter errSw = new StringWriter();
-
-        Constructor<?> ctor = mainClz.getConstructor(PrintWriter.class, PrintWriter.class, boolean.class);
-        Object mainObj = ctor.newInstance(new PrintWriter(outSw), new PrintWriter(errSw), Boolean.FALSE);
-
-        Method compileMethod = mainClz.getMethod("compile", String[].class);
-        Object result = compileMethod.invoke(mainObj, (Object) argList.toArray(new String[0]));
-        printCaptured(outSw, errSw);
-        boolean ok = Boolean.TRUE.equals(result);
-        log("ECJ compileDir 结果: " + ok + " (" + n + " 文件)");
-        return ok;
-    }
     private void log(String s) {
         Log.d("APKBUILDER", "[ECJ] " + s);
         logger.log("[ECJ] " + s);

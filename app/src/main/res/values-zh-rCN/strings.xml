@@ -25,6 +25,7 @@
     <string name="mode_label">打包模式</string>
     <string name="mode_html">HTML</string>
     <string name="mode_java">Java</string>
+    <string name="pick_mode_title">选择模式</string>
     <string name="pkg_label">包名</string>
     <string name="pkg_hint">com.example.myapp</string>
     <string name="name_label">应用名</string>
@@ -38,6 +39,7 @@
     <string name="source_none">未选择源文件</string>
     <string name="source_selected">源文件: %1$s</string>
     <string name="btn_build">生成 APK</string>
+    <string name="build_running">正在构建…</string>
     <string name="log_label">日志</string>
     <string name="btn_copy_log">复制</string>
     <string name="btn_clear_log">清空</string>
@@ -54,12 +56,16 @@
     <string name="pick_html_title">选择源文件</string>
     <string name="pick_icon_title">选择图标</string>
     <string name="pick_java_title">选择 .java 文件（可多选）</string>
-    <string name="build_running">正在构建...</string>
     <string name="pkg_mismatch">%1$s 里包名不匹配：找到「%2$s」，需要「%3$s」</string>
     <string name="clean_temp_title">清理临时文件？</string>
     <string name="clean_temp_msg">删除临时构建目录？</string>
     <string name="btn_yes">是</string>
     <string name="btn_no">否</string>
-    <string name="sw_disable_on_build">构建时禁用按钮</string>
-    <string name="sw_clean_temp">构建后询问清理临时文件</string>
+
+    <string name="btn_edit_file">编辑源文件</string>
+    <string name="editor_back">← 返回</string>
+    <string name="editor_save">保存</string>
+    <string name="editor_unsaved_title">未保存的修改</string>
+    <string name="editor_unsaved_msg">退出前要保存吗？</string>
+    <string name="editor_discard">放弃</string>
 </resources>

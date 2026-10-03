@@ -1,12 +1,8 @@
 package com.example.apkbuilder;
 
 import android.Manifest;
-import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,12 +10,9 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ListView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,35 +20,22 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import java.io.File;
+import com.google.android.material.button.MaterialButton;
+
 import java.util.List;
-import java.util.Locale;
 
 public class ProjectListActivity extends AppCompatActivity {
 
-    private static final String PREF = "settings";
-    private static final String KEY_LANG = "lang";
-
-    private ListView listProjects;
-    private TextView tvEmpty, tvBasePath;
-    private Button btnNewProject, btnLang;
+    private RecyclerView listProjects;
+    private LinearLayout emptyState;
+    private TextView tvBasePath;
+    private MaterialButton btnNewProject;
+    private Button btnLang;
+    private ProjectAdapter adapter;
     private List<String> projects;
-
-    @Override
-    protected void attachBaseContext(Context newBase) {
-        SharedPreferences sp = newBase.getSharedPreferences(PREF, MODE_PRIVATE);
-        String lang = sp.getString(KEY_LANG, "system");
-        if ("system".equals(lang)) {
-            super.attachBaseContext(newBase);
-            return;
-        }
-        Locale locale = new Locale(lang);
-        Locale.setDefault(locale);
-        Configuration config = new Configuration();
-        config.setLocale(locale);
-        super.attachBaseContext(newBase.createConfigurationContext(config));
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,36 +43,17 @@ public class ProjectListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_project_list);
 
         listProjects = findViewById(R.id.listProjects);
-        tvEmpty = findViewById(R.id.tvEmpty);
+        emptyState = findViewById(R.id.emptyState);
         tvBasePath = findViewById(R.id.tvBasePath);
         btnNewProject = findViewById(R.id.btnNewProject);
         btnLang = findViewById(R.id.btnLang);
 
+        listProjects.setLayoutManager(new LinearLayoutManager(this));
         tvBasePath.setText(ProjectStore.base().getAbsolutePath());
 
-        btnLang.setOnClickListener(v -> {
-            SharedPreferences sp = getSharedPreferences(PREF, MODE_PRIVATE);
-            String cur = sp.getString(KEY_LANG, "system");
-            String next;
-            if ("zh".equals(cur)) next = "en";
-            else if ("en".equals(cur)) next = "system";
-            else next = "zh";
-            sp.edit().putString(KEY_LANG, next).apply();
-            recreate();
-        });
+        btnLang.setOnClickListener(v -> LocaleHelper.toggle(this));
 
-        btnNewProject.setOnClickListener(v -> promptNewProject());
-
-        listProjects.setOnItemClickListener((parent, view, position, id) -> {
-            String name = projects.get(position);
-            openProject(name);
-        });
-
-        listProjects.setOnItemLongClickListener((parent, view, position, id) -> {
-            String name = projects.get(position);
-            confirmDelete(name);
-            return true;
-        });
+        btnNewProject.setOnClickListener(v -> promptMode());
 
         checkStoragePermission();
     }
@@ -105,18 +66,27 @@ public class ProjectListActivity extends AppCompatActivity {
 
     private void refreshList() {
         if (!hasStoragePermission()) {
-            tvEmpty.setVisibility(View.GONE);
+            emptyState.setVisibility(View.GONE);
             return;
         }
         projects = ProjectStore.list();
         if (projects.isEmpty()) {
-            tvEmpty.setVisibility(View.VISIBLE);
+            emptyState.setVisibility(View.VISIBLE);
             listProjects.setVisibility(View.GONE);
         } else {
-            tvEmpty.setVisibility(View.GONE);
+            emptyState.setVisibility(View.GONE);
             listProjects.setVisibility(View.VISIBLE);
-            listProjects.setAdapter(new ArrayAdapter<>(this,
-                    android.R.layout.simple_list_item_1, projects));
+            adapter = new ProjectAdapter(projects, new ProjectAdapter.OnClick() {
+                @Override
+                public void onClick(String name) {
+                    openProject(name);
+                }
+                @Override
+                public void onDelete(String name) {
+                    confirmDelete(name);
+                }
+            });
+            listProjects.setAdapter(adapter);
         }
     }
 
@@ -169,7 +139,22 @@ public class ProjectListActivity extends AppCompatActivity {
         }
     }
 
-    private void promptNewProject() {
+    private void promptMode() {
+        final String[] modes = new String[]{
+                getString(R.string.mode_html),
+                getString(R.string.mode_java)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.pick_mode_title)
+                .setItems(modes, (d, which) -> {
+                    String mode = (which == 0) ? "HTML" : "Java";
+                    promptProjectName(mode);
+                })
+                .setNegativeButton(R.string.btn_cancel, null)
+                .show();
+    }
+
+    private void promptProjectName(final String mode) {
         EditText et = new EditText(this);
         et.setHint(R.string.new_project_hint);
         et.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -177,7 +162,7 @@ public class ProjectListActivity extends AppCompatActivity {
         et.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
 
         new AlertDialog.Builder(this)
-                .setTitle(R.string.btn_new_project)
+                .setTitle(getString(R.string.btn_new_project) + " · " + mode)
                 .setView(et)
                 .setPositiveButton(R.string.btn_open_project, (d, w) -> {
                     String name = et.getText().toString().trim();
@@ -190,7 +175,7 @@ public class ProjectListActivity extends AppCompatActivity {
                         return;
                     }
                     try {
-                        ProjectStore.create(name);
+                        ProjectStore.create(name, mode);
                         toast(getString(R.string.project_created, name));
                         openProject(name);
                     } catch (Exception e) {

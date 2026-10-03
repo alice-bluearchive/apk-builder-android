@@ -4,8 +4,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -18,13 +16,14 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.RadioButton;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
+
+import com.google.android.material.button.MaterialButton;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -43,14 +42,12 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int REQ_PICK_HTML = 1001;
     private static final int REQ_PICK_ICON = 1002;
-    private static final String PREF = "settings";
-    private static final String KEY_LANG = "lang";
 
     private RadioButton modeHtml;
     private EditText etPackage, etAppName;
-    private Button btnPickIcon, btnPickSource, btnBuild, btnTestToolchain, btnBack;
+    private MaterialButton btnBuild, btnPickSource, btnEditFiles, btnPickIcon;
+    private Button btnTestToolchain, btnBack;
     private Button btnLang, btnCopyLog, btnClearLog;
-    private Switch swDisableOnBuild, swCleanTemp;
     private ImageView ivIcon;
     private CheckBox permInternet, permStorage, permCamera, permLocation;
     private EditText tvLog;
@@ -60,24 +57,6 @@ public class MainActivity extends AppCompatActivity {
     private File pickedIcon = null;
     private String projectName = null;
     private volatile boolean building = false;
-
-    private String snapshotPkg = "";
-    private String snapshotName = "";
-
-    @Override
-    protected void attachBaseContext(Context newBase) {
-        SharedPreferences sp = newBase.getSharedPreferences(PREF, MODE_PRIVATE);
-        String lang = sp.getString(KEY_LANG, "system");
-        if ("system".equals(lang)) {
-            super.attachBaseContext(newBase);
-            return;
-        }
-        Locale locale = new Locale(lang);
-        Locale.setDefault(locale);
-        Configuration config = new Configuration();
-        config.setLocale(locale);
-        super.attachBaseContext(newBase.createConfigurationContext(config));
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
         etAppName = findViewById(R.id.etAppName);
         btnPickIcon = findViewById(R.id.btnPickIcon);
         btnPickSource = findViewById(R.id.btnPickSource);
+        btnEditFiles = findViewById(R.id.btnEditFiles);
         btnBuild = findViewById(R.id.btnBuild);
         btnTestToolchain = findViewById(R.id.btnTestToolchain);
         btnLang = findViewById(R.id.btnLang);
@@ -104,9 +84,8 @@ public class MainActivity extends AppCompatActivity {
         tvSourceName = findViewById(R.id.tvSourceName);
         tvIconName = findViewById(R.id.tvIconName);
         tvProjectName = findViewById(R.id.tvProjectName);
-        swDisableOnBuild = findViewById(R.id.swDisableOnBuild);
-        swCleanTemp = findViewById(R.id.swCleanTemp);
         tvLog.setMovementMethod(new ScrollingMovementMethod());
+        tvLog.setKeyListener(null);
 
         tvLog.setOnTouchListener((v, event) -> {
             int action = event.getActionMasked();
@@ -120,16 +99,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnBack.setOnClickListener(v -> finish());
 
-        btnLang.setOnClickListener(v -> {
-            SharedPreferences sp = getSharedPreferences(PREF, MODE_PRIVATE);
-            String cur = sp.getString(KEY_LANG, "system");
-            String next;
-            if ("zh".equals(cur)) next = "en";
-            else if ("en".equals(cur)) next = "system";
-            else next = "zh";
-            sp.edit().putString(KEY_LANG, next).apply();
-            recreate();
-        });
+        btnLang.setOnClickListener(v -> LocaleHelper.toggle(this));
 
         btnCopyLog.setOnClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -148,13 +118,13 @@ public class MainActivity extends AppCompatActivity {
         if (projectName != null) {
             tvProjectName.setText(projectName);
             loadProjectConfig();
+            updateSourceLabel();
         } else {
             tvProjectName.setText("(no project)");
         }
 
         btnPickIcon.setOnClickListener(v -> {
             if (building) return;
-            saveSnapshot();
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("image/*");
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -163,7 +133,6 @@ public class MainActivity extends AppCompatActivity {
 
         btnPickSource.setOnClickListener(v -> {
             if (building) return;
-            saveSnapshot();
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("*/*");
             if (modeHtml.isChecked()) {
@@ -174,10 +143,37 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        btnEditFiles.setOnClickListener(v -> {
+            if (building) return;
+            if (projectName == null) {
+                toast("No project");
+                return;
+            }
+            File src = ProjectStore.srcDir(projectName);
+            if (!src.isDirectory()) {
+                toast("No src dir");
+                return;
+            }
+            File[] files = src.listFiles();
+            if (files == null || files.length == 0) {
+                toast("No files in src/");
+                return;
+            }
+            String[] names = new String[files.length];
+            for (int i = 0; i < files.length; i++) names[i] = files[i].getName();
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(R.string.btn_edit_file)
+                    .setItems(names, (d, idx) -> {
+                        Intent i = new Intent(MainActivity.this, EditorActivity.class);
+                        i.putExtra("file", files[idx].getAbsolutePath());
+                        startActivity(i);
+                    })
+                    .show();
+        });
+
         btnBuild.setOnClickListener(v -> {
             if (building) return;
             tvLog.setText("");
-            restoreSnapshot();
 
             String pkg = etPackage.getText().toString().trim();
             String name = etAppName.getText().toString().trim();
@@ -200,19 +196,38 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            if (selectedHtml == null || !selectedHtml.exists()) {
-                log("[ERR] 未选源文件");
-                toast(getString(R.string.source_none));
+            File srcFile = null;
+            if (projectName != null) {
+                File projSrc = ProjectStore.srcDir(projectName);
+                if ("HTML".equals(mode)) {
+                    File idx = new File(projSrc, "index.html");
+                    if (idx.exists()) srcFile = idx;
+                } else {
+                    File[] fs = projSrc.listFiles();
+                    if (fs != null) {
+                        for (File f : fs) {
+                            if (f.getName().endsWith(".java")) {
+                                srcFile = f;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (srcFile == null) srcFile = selectedHtml;
+
+            if (srcFile == null || !srcFile.exists()) {
+                log("[ERR] 项目 src/ 里没有源文件");
+                toast("请先在 src/ 里放源文件");
                 return;
             }
+            selectedHtml = srcFile;
 
-            // A. Java 模式 package 一致性检查
-            if ("Java".equals(mode)) {
-                String err = checkJavaPackage(pkg);
-                if (err != null) {
-                    log("[ERR] " + err);
-                    toast(err);
-                    return;
+            if ("Java".equals(mode) && projectName != null) {
+                File srcDir = ProjectStore.srcDir(projectName);
+                int changed = syncPackageToJava(srcDir, pkg);
+                if (changed > 0) {
+                    log("已同步 package 到 " + changed + " 个 .java 文件");
                 }
             }
 
@@ -245,20 +260,33 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            // D. 禁用按钮
             setBuilding(true);
 
             new Thread(() -> {
                 try {
+                    // === 解压 android.jar（首次）===
                     File androidJar = new File(getFilesDir(), "android.jar");
-                    if (!androidJar.exists()) {
-                        log("解压 android.jar ...");
-                        try (InputStream in = getAssets().open("template/android.jar");
+                    if (!androidJar.exists() || androidJar.length() < 1_000_000) {
+                        log("首次解压 android.jar.zip ...");
+                        long t0 = System.currentTimeMillis();
+                        try (InputStream is = getAssets().open("template/android.jar.zip");
+                             java.util.zip.ZipInputStream zis =
+                                     new java.util.zip.ZipInputStream(
+                                             new java.io.BufferedInputStream(is));
                              OutputStream out = new FileOutputStream(androidJar)) {
                             byte[] buf = new byte[65536];
-                            int n;
-                            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                            java.util.zip.ZipEntry entry;
+                            while ((entry = zis.getNextEntry()) != null) {
+                                if (entry.isDirectory()) continue;
+                                int n;
+                                while ((n = zis.read(buf)) > 0) out.write(buf, 0, n);
+                                break;
+                            }
                         }
+                        long dt = System.currentTimeMillis() - t0;
+                        log("android.jar 解压完成: " + androidJar.length() + " bytes, 耗时 " + (dt / 1000) + "s");
+                    } else {
+                        log("android.jar 已就绪: " + androidJar.length() + " bytes");
                     }
 
                     ToolchainManager tm = new ToolchainManager(MainActivity.this);
@@ -313,39 +341,71 @@ public class MainActivity extends AppCompatActivity {
         btnTestToolchain.setOnClickListener(v -> testToolchain());
     }
 
-    // D. 构建中禁用按钮
     private void setBuilding(boolean b) {
         building = b;
-        if (swDisableOnBuild.isChecked()) {
-            btnBuild.setEnabled(!b);
-            btnPickSource.setEnabled(!b);
-            btnPickIcon.setEnabled(!b);
-            btnBack.setEnabled(!b);
+        btnBuild.setEnabled(!b);
+        btnPickSource.setEnabled(!b);
+        btnPickIcon.setEnabled(!b);
+        btnBack.setEnabled(!b);
+        btnEditFiles.setEnabled(!b);
+        if (b) btnBuild.setText(R.string.build_running);
+        else btnBuild.setText(R.string.btn_build);
+    }
+
+    private void updateSourceLabel() {
+        if (projectName == null) {
+            tvSourceName.setText(R.string.source_none);
+            return;
+        }
+        File src = ProjectStore.srcDir(projectName);
+        File[] files = src.listFiles();
+        int n = 0;
+        if (files != null) {
+            for (File f : files) {
+                if (f.isFile()) n++;
+            }
+        }
+        if (n == 0) {
+            tvSourceName.setText(R.string.source_none);
+        } else {
+            tvSourceName.setText(getString(R.string.source_selected, n + " 个文件 (src/)"));
         }
     }
 
-    // A. 检查 Java 源文件的 package
-    private String checkJavaPackage(String expectedPkg) {
-        File dir = selectedHtml.getParentFile();
-        if (dir == null) dir = new File(getCacheDir(), "java_src");
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateSourceLabel();
+    }
+
+    private int syncPackageToJava(File dir, String pkg) {
         File[] files = dir.listFiles();
-        if (files == null) return null;
-        Pattern p = Pattern.compile("^\\s*package\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s*;", Pattern.MULTILINE);
+        if (files == null) return 0;
+        Pattern p = Pattern.compile("^\\s*package\\s+[A-Za-z_][A-Za-z0-9_.]*\\s*;", Pattern.MULTILINE);
+        int count = 0;
         for (File f : files) {
             if (!f.getName().endsWith(".java")) continue;
             String content = readText(f);
             Matcher m = p.matcher(content);
             if (m.find()) {
-                String found = m.group(1);
-                if (!found.equals(expectedPkg)) {
-                    return getString(R.string.pkg_mismatch, f.getName(), found, expectedPkg);
+                String oldLine = m.group().trim();
+                String newLine = "package " + pkg + ";";
+                if (!oldLine.equals(newLine)) {
+                    content = m.replaceFirst(Matcher.quoteReplacement(newLine));
+                    try (OutputStream os = new FileOutputStream(f)) {
+                        os.write(content.getBytes("UTF-8"));
+                    } catch (Exception ex) {
+                        log("  写入失败 " + f.getName() + ": " + ex.getMessage());
+                        continue;
+                    }
+                    log("  " + f.getName() + ": " + oldLine + " -> " + newLine);
+                    count++;
                 }
             }
         }
-        return null;
+        return count;
     }
 
-    // B. 显示结果 + 询问清理临时文件
     private void showResultDialog(File apk) {
         String path = apk.getAbsolutePath();
         String size = humanSize(apk.length());
@@ -354,18 +414,17 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage(getString(R.string.build_success_msg, path, size))
                 .setPositiveButton(R.string.btn_install, (d, w) -> {
                     installApk(apk);
-                    maybeCleanTemp();
+                    promptCleanTemp();
                 })
                 .setNeutralButton(R.string.btn_open_dir, (d, w) -> {
                     openApkDir();
-                    maybeCleanTemp();
+                    promptCleanTemp();
                 })
-                .setNegativeButton(R.string.btn_close, (d, w) -> maybeCleanTemp())
+                .setNegativeButton(R.string.btn_close, (d, w) -> promptCleanTemp())
                 .show();
     }
 
-    private void maybeCleanTemp() {
-        if (!swCleanTemp.isChecked()) return;
+    private void promptCleanTemp() {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.clean_temp_title)
                 .setMessage(R.string.clean_temp_msg)
@@ -375,7 +434,9 @@ public class MainActivity extends AppCompatActivity {
                     if (kids != null) {
                         for (File f : kids) {
                             String name = f.getName();
-                            if (name.startsWith("build_") || name.equals("class_out") || name.equals("dex_out") || name.equals("ecj_out")) {
+                            if (name.startsWith("build_") || name.equals("class_out")
+                                    || name.equals("dex_out") || name.equals("ecj_out")
+                                    || name.equals("java_src")) {
                                 deleteRec(f);
                                 n++;
                             }
@@ -458,26 +519,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void saveSnapshot() {
-        snapshotPkg = etPackage.getText().toString();
-        snapshotName = etAppName.getText().toString();
-    }
-
-    private void restoreSnapshot() {
-        if (!snapshotPkg.equals(etPackage.getText().toString())) {
-            etPackage.setText(snapshotPkg);
-            etPackage.setSelection(snapshotPkg.length());
-        }
-        if (!snapshotName.equals(etAppName.getText().toString())) {
-            etAppName.setText(snapshotName);
-            etAppName.setSelection(snapshotName.length());
-        }
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        restoreSnapshot();
 
         if (resultCode != RESULT_OK || data == null) return;
 
@@ -497,8 +541,21 @@ public class MainActivity extends AppCompatActivity {
                 Uri firstUri = uris.get(0);
                 log("Selected " + uris.size() + " file(s)");
 
+                File destDir;
+                if (projectName != null) {
+                    destDir = ProjectStore.srcDir(projectName);
+                } else {
+                    destDir = new File(getCacheDir(), "java_src");
+                }
+                destDir.mkdirs();
+
                 if (modeHtml.isChecked()) {
-                    File dst = new File(getCacheDir(), "picked_index.html");
+                    File old = new File(destDir, "index.html");
+                    if (old.exists()) {
+                        old.delete();
+                        log("已删除旧 src/index.html");
+                    }
+                    File dst = new File(destDir, "index.html");
                     try (InputStream in = getContentResolver().openInputStream(firstUri);
                          OutputStream out = new FileOutputStream(dst)) {
                         byte[] buf = new byte[8192];
@@ -506,35 +563,41 @@ public class MainActivity extends AppCompatActivity {
                         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                     }
                     selectedHtml = dst;
-                    String display = getDisplayName(firstUri, dst.getName());
-                    tvSourceName.setText(getString(R.string.source_selected, display));
-                    log("HTML: " + dst.getAbsolutePath() + " (" + dst.length() + " bytes)");
-                    toast("已选: " + display);
+                    log("已覆盖到 src/index.html: " + dst.length() + " bytes");
+                    toast("已覆盖 src/index.html");
+                    updateSourceLabel();
                 } else {
-                    File javaDir = new File(getCacheDir(), "java_src");
-                    deleteRec(javaDir);
-                    javaDir.mkdirs();
+                    File[] old = destDir.listFiles();
+                    int removed = 0;
+                    if (old != null) {
+                        for (File f : old) {
+                            if (f.getName().endsWith(".java")) {
+                                f.delete();
+                                removed++;
+                            }
+                        }
+                    }
+                    log("已删除旧 .java 文件: " + removed + " 个");
 
-                    File mainFile = null;
+                    int copied = 0;
+                    File firstDst = null;
                     for (Uri u : uris) {
                         String display = getDisplayName(u, "unknown.java");
-                        File dst = new File(javaDir, display);
+                        if (!display.endsWith(".java")) display = display + ".java";
+                        File dst = new File(destDir, display);
                         try (InputStream in = getContentResolver().openInputStream(u);
                              OutputStream out = new FileOutputStream(dst)) {
                             byte[] buf = new byte[8192];
                             int n;
                             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                         }
-                        log("  " + dst.getName() + " (" + dst.length() + " bytes)");
-                        String content = readText(dst);
-                        if (content.contains("onCreate") && (content.contains("Activity") || content.contains("AppCompatActivity"))) {
-                            mainFile = dst;
-                        }
+                        log("  src/" + dst.getName() + " (" + dst.length() + " bytes)");
+                        if (firstDst == null) firstDst = dst;
+                        copied++;
                     }
-                    if (mainFile == null) mainFile = new File(javaDir, getDisplayName(firstUri, "MainActivity.java"));
-                    selectedHtml = mainFile;
-                    tvSourceName.setText(getString(R.string.source_selected, uris.size() + " 个文件"));
-                    toast("已选 " + uris.size() + " 个文件");
+                    selectedHtml = firstDst;
+                    toast("已覆盖 " + copied + " 个 .java 到 src/");
+                    updateSourceLabel();
                 }
             } catch (Exception e) {
                 log("[ERR] read failed: " + e.getMessage());

@@ -234,16 +234,50 @@ public class ApkBuilder {
     }
 
     private File prepareAndroidJar() throws IOException {
-        File cached = new File(ctx.getCacheDir(), "android.jar");
-        if (cached.exists() && cached.length() > 0) return cached;
-        try (InputStream is = ctx.getAssets().open("template/android.jar");
-             OutputStream os = new FileOutputStream(cached)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = is.read(buf)) > 0) os.write(buf, 0, n);
-        } catch (IOException e) {
-            throw new IOException("assets/template/android.jar 缺失", e);
+        // 从 zip 解压到 filesDir（持久化，避免每次重解压）
+        File cached = new File(ctx.getFilesDir(), "android.jar");
+        if (cached.exists() && cached.length() > 1_000_000) {
+            log("android.jar 已就绪: " + cached.length() + " bytes");
+            return cached;
         }
+
+        log("首次解压 android.jar.zip ...");
+        long t0 = System.currentTimeMillis();
+        File tmp = new File(ctx.getFilesDir(), "android.jar.tmp");
+
+        byte[] buf = new byte[65536];
+        try (InputStream is = ctx.getAssets().open("template/android.jar.zip");
+             java.util.zip.ZipInputStream zis =
+                     new java.util.zip.ZipInputStream(
+                             new java.io.BufferedInputStream(is));
+             OutputStream os = new FileOutputStream(tmp)) {
+
+            java.util.zip.ZipEntry entry;
+            boolean extracted = false;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) continue;
+                int n;
+                while ((n = zis.read(buf)) > 0) os.write(buf, 0, n);
+                extracted = true;
+                break; // 只有一个文件 android.jar
+            }
+            if (!extracted) throw new IOException("zip 里没有文件");
+        } catch (IOException e) {
+            throw new IOException("解压 android.jar.zip 失败: " + e.getMessage(), e);
+        }
+
+        if (!tmp.renameTo(cached)) {
+            // rename 失败就用 copy
+            try (InputStream in = new FileInputStream(tmp);
+                 OutputStream out = new FileOutputStream(cached)) {
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+            tmp.delete();
+        }
+
+        long dt = System.currentTimeMillis() - t0;
+        log("android.jar 解压完成: " + cached.length() + " bytes, 耗时 " + (dt / 1000) + "s");
         return cached;
     }
 

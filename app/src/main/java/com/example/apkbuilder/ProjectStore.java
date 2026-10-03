@@ -52,15 +52,86 @@ public class ProjectStore {
         return out;
     }
 
+    /** 兼容老接口，默认 HTML 模式 */
     public static void create(String name) throws IOException {
+        create(name, "HTML");
+    }
+
+    /** 按模式创建项目：只生成该模式所需的最小文件 */
+    public static void create(String name, String mode) throws IOException {
+        if (mode == null || mode.isEmpty()) mode = "HTML";
+
         File d = dir(name);
         if (d.exists()) throw new IOException("Project exists");
         if (!d.mkdirs()) throw new IOException("Cannot create dir: " + d);
-        new File(d, SRC_DIR).mkdirs();
+
+        File src = new File(d, SRC_DIR);
+        src.mkdirs();
         new File(d, OUT_DIR).mkdirs();
+
         ProjectConfig c = new ProjectConfig();
         c.name = name;
+        c.mode = mode;
         saveConfig(c);
+
+        if ("Java".equals(mode)) {
+            writeMinimalJava(src, c.pkg);
+        } else {
+            writeMinimalHtml(src);
+        }
+    }
+
+    private static void writeMinimalJava(File srcDir, String pkg) throws IOException {
+        File f = new File(srcDir, "MainActivity.java");
+        String content =
+                "package " + pkg + ";\n" +
+                        "\n" +
+                        "import android.app.Activity;\n" +
+                        "import android.os.Bundle;\n" +
+                        "import android.widget.TextView;\n" +
+                        "\n" +
+                        "public class MainActivity extends Activity {\n" +
+                        "    @Override\n" +
+                        "    protected void onCreate(Bundle savedInstanceState) {\n" +
+                        "        super.onCreate(savedInstanceState);\n" +
+                        "        TextView tv = new TextView(this);\n" +
+                        "        tv.setText(\"Hello from APK Builder\");\n" +
+                        "        setContentView(tv);\n" +
+                        "    }\n" +
+                        "}\n";
+        try (OutputStream os = new FileOutputStream(f)) {
+            os.write(content.getBytes("UTF-8"));
+        }
+    }
+
+    private static void writeMinimalHtml(File srcDir) throws IOException {
+        File f = new File(srcDir, "index.html");
+        String content =
+                "<!DOCTYPE html>\n" +
+                        "<html lang=\"zh\">\n" +
+                        "<head>\n" +
+                        "<meta charset=\"utf-8\">\n" +
+                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" +
+                        "<title>My App</title>\n" +
+                        "<style>\n" +
+                        "  body{margin:0;font-family:sans-serif;display:flex;align-items:center;\n" +
+                        "       justify-content:center;min-height:100vh;background:#f5f5f5;color:#333}\n" +
+                        "  .card{text-align:center;padding:32px}\n" +
+                        "  h1{margin:0 0 12px;font-size:24px}\n" +
+                        "  button{padding:10px 24px;font-size:16px;border:none;border-radius:8px;\n" +
+                        "         background:#FFB300;color:#1A1A1A;font-weight:600}\n" +
+                        "</style>\n" +
+                        "</head>\n" +
+                        "<body>\n" +
+                        "  <div class=\"card\">\n" +
+                        "    <h1>Hello, APK Builder!</h1>\n" +
+                        "    <button onclick=\"alert('Working!')\">Tap me</button>\n" +
+                        "  </div>\n" +
+                        "</body>\n" +
+                        "</html>\n";
+        try (OutputStream os = new FileOutputStream(f)) {
+            os.write(content.getBytes("UTF-8"));
+        }
     }
 
     public static void delete(String name) {
