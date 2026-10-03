@@ -69,9 +69,15 @@ public class ProjectStore {
         src.mkdirs();
         new File(d, OUT_DIR).mkdirs();
 
+        String safeLower = name.toLowerCase().replaceAll("[^a-z0-9]", "");
+        if (safeLower.isEmpty()) safeLower = "app";
+        if (!Character.isLetter(safeLower.charAt(0))) safeLower = "app" + safeLower;
+
         ProjectConfig c = new ProjectConfig();
         c.name = name;
         c.mode = mode;
+        c.appName = name;
+        c.pkg = "com.example." + safeLower;
         saveConfig(c);
 
         if ("Java".equals(mode)) {

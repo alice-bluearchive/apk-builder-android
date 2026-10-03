@@ -6,7 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
 import com.android.apksig.ApkSigner;
-
+import android.graphics.Canvas;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,7 +40,9 @@ public class ApkBuilder {
     private static final String KS_PASSWORD = "android";
     private static final String KS_ALIAS = "androiddebugkey";
 
-    public interface Logger { void log(String msg); }
+    public interface Logger {
+        void log(String msg);
+    }
 
     private final Context ctx;
     private final ToolchainManager tm;
@@ -49,7 +51,8 @@ public class ApkBuilder {
     public ApkBuilder(Context ctx, ToolchainManager tm, Logger logger) {
         this.ctx = ctx.getApplicationContext();
         this.tm = tm;
-        this.logger = (logger == null) ? msg -> {} : logger;
+        this.logger = (logger == null) ? msg -> {
+        } : logger;
     }
 
     // ============ HTML 模式 ============
@@ -405,7 +408,9 @@ public class ApkBuilder {
         }
     }
 
-    private void log(String s) { logger.log(s); }
+    private void log(String s) {
+        logger.log(s);
+    }
 
     private static void writeFile(File f, String content) throws IOException {
         try (Writer w = new OutputStreamWriter(new FileOutputStream(f), "UTF-8")) {
@@ -435,9 +440,31 @@ public class ApkBuilder {
                 .replace("\"", "&quot;").replace("'", "&apos;");
     }
 
-    private static void writePlaceholderIcon(File f) throws IOException {
+    private void writePlaceholderIcon(File f) throws IOException {
+        // 用系统默认应用图标（兼容 Bitmap / Vector）
+        try {
+            android.graphics.drawable.Drawable d =
+                    androidx.core.content.ContextCompat.getDrawable(
+                            ctx, android.R.drawable.sym_def_app_icon);
+            if (d != null) {
+                Bitmap bmp = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888);
+                Canvas cv = new Canvas(bmp);
+                d.setBounds(0, 0, 192, 192);
+                d.draw(cv);
+                try (FileOutputStream fos = new FileOutputStream(f)) {
+                    bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                }
+                bmp.recycle();
+                log("使用系统默认图标");
+                return;
+            }
+        } catch (Throwable e) {
+            log("加载系统图标失败: " + e);
+        }
+
+        // 兜底：纯色块
         Bitmap bmp = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
-        bmp.eraseColor(0xFF3B82F6);
+        bmp.eraseColor(0xFF3DDC84);
         try (FileOutputStream fos = new FileOutputStream(f)) {
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
         }
