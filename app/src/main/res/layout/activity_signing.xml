@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1E1E1E">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:scaleType="centerInside" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="@string/sign_title"
+                android:textColor="#CCCCCC"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/sign_enable"
+                android:textColor="#DDDDDD"
+                android:textSize="14sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/swEnable"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_keystore_label"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvKeystorePath"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/sign_no_keystore"
+                android:textColor="#DDDDDD"
+                android:textSize="13sp"
+                android:singleLine="true"
+                android:ellipsize="middle" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPickKeystore"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/sign_pick_keystore"
+                android:textSize="12sp"
+                android:minHeight="36dp" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_type_label"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginTop="16dp" />
+
+        <RadioGroup
+            android:id="@+id/rgType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rbJks"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="JKS"
+                android:textColor="#DDDDDD"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/rbPkcs12"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
+                android:text="PKCS12"
+                android:textColor="#DDDDDD" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_alias_label"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/etAlias"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#2D2D2D"
+            android:padding="10dp"
+            android:textColor="#DDDDDD"
+            android:textSize="13sp"
+            android:hint="@string/sign_alias_hint"
+            android:textColorHint="#666666"
+            android:inputType="text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_store_pass_label"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/etStorePassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#2D2D2D"
+            android:padding="10dp"
+            android:textColor="#DDDDDD"
+            android:textSize="13sp"
+            android:hint="@string/sign_pass_hint"
+            android:textColorHint="#666666"
+            android:inputType="textPassword" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_key_pass_label"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginTop="12dp" />
+
+        <EditText
+            android:id="@+id/etKeyPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#2D2D2D"
+            android:padding="10dp"
+            android:textColor="#DDDDDD"
+            android:textSize="13sp"
+            android:hint="@string/sign_key_pass_hint"
+            android:textColorHint="#666666"
+            android:inputType="textPassword" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_warning"
+            android:textColor="#FFA726"
+            android:textSize="11sp"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#81C784"
+            android:textSize="12sp"
+            android:layout_marginTop="12dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="20dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTest"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/sign_btn_test" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClear"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/sign_btn_clear" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSave"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/sign_btn_save" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

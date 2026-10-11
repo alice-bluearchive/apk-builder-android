@@ -1,0 +1,38 @@
+$gitignore = @'
+# ===== Gradle =====
+.gradle/
+build/
+local.properties
+captures/
+
+# ===== IDE =====
+.idea/
+*.iml
+*.hprof
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Build outputs =====
+*.apk
+*.aab
+*.ap_
+output.json
+
+# ===== Logs =====
+*.log
+
+# ===== User keystores (bundled debug key is kept) =====
+*.jks
+*.keystore
+*.p12
+!app/src/main/assets/keystore/debug.p12
+!app/src/main/assets/template/keystore/debug.p12
+'@
+[System.IO.File]::WriteAllText(
+    "E:\Android\AndroidStudio\.gitignore",
+    $gitignore,
+    (New-Object System.Text.UTF8Encoding($false))
+)
+Write-Host "Written .gitignore"

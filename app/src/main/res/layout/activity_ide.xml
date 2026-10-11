@@ -1,0 +1,482 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1E1E1E">
+
+    <!-- Toolbar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:background="#252526"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
+
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/btnToggleSidebar"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_sidebar_toggle"
+            android:scaleType="centerInside"
+            android:contentDescription="Toggle sidebar" />
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:textColor="#CCCCCC"
+            android:textSize="14sp"
+            android:singleLine="true"
+            android:ellipsize="middle"
+            android:text="Project" />
+
+        <ImageButton
+            android:id="@+id/btnMenu"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_more"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/btnSave"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_save"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/btnBuild"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_media_play"
+            android:scaleType="centerInside" />
+    </LinearLayout>
+
+    <!-- Main: icon bar | panel | divider | editor -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Icon bar -->
+        <LinearLayout
+            android:id="@+id/iconBar"
+            android:layout_width="48dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:background="#2D2D2D"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:gravity="top">
+
+            <ImageButton
+                android:id="@+id/iconFiles"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_side_files"
+                android:scaleType="centerInside"
+                android:contentDescription="Files" />
+
+            <ImageButton
+                android:id="@+id/iconSearch"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_side_search"
+                android:scaleType="centerInside"
+                android:contentDescription="Search" />
+
+            <ImageButton
+                android:id="@+id/iconGit"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_side_git"
+                android:scaleType="centerInside"
+                android:contentDescription="Git" />
+
+            <ImageButton
+                android:id="@+id/iconExtensions"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_side_extensions"
+                android:scaleType="centerInside"
+                android:contentDescription="Extensions" />
+
+            <LinearLayout
+                android:id="@+id/iconBarExt"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- Panel container -->
+        <FrameLayout
+            android:id="@+id/panelContainer"
+            android:layout_width="240dp"
+            android:layout_height="match_parent"
+            android:background="#252526">
+
+            <!-- Files panel -->
+            <LinearLayout
+                android:id="@+id/panelFiles"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="#2D2D2D"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/ide_files"
+                        android:textColor="#CCCCCC"
+                        android:textSize="12sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnNewFile"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_new_file"
+                        android:scaleType="centerInside" />
+
+                    <ImageButton
+                        android:id="@+id/btnNewFolder"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_new_folder"
+                        android:scaleType="centerInside" />
+
+                    <ImageButton
+                        android:id="@+id/btnRefreshTree"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_refresh"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/fileTree"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:clipToPadding="false" />
+            </LinearLayout>
+
+            <!-- Search panel -->
+            <LinearLayout
+                android:id="@+id/panelSearch"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="#2D2D2D"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="4dp">
+
+                    <EditText
+                        android:id="@+id/etSearch"
+                        android:layout_width="0dp"
+                        android:layout_height="32dp"
+                        android:layout_weight="1"
+                        android:background="#1E1E1E"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:hint="@string/ide_search_hint"
+                        android:textColor="#DDDDDD"
+                        android:textColorHint="#666666"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:inputType="text"
+                        android:imeOptions="actionSearch" />
+
+                    <ImageButton
+                        android:id="@+id/btnSearchClear"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@android:drawable/ic_menu_close_clear_cancel"
+                        android:scaleType="centerInside" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvSearchStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="10dp"
+                    android:textColor="#888888"
+                    android:textSize="11sp"
+                    android:text="" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/listSearchResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:paddingBottom="6dp"
+                    android:clipToPadding="false" />
+            </LinearLayout>
+
+            <!-- Git panel -->
+            <LinearLayout
+                android:id="@+id/panelGit"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="#2D2D2D"
+                    android:paddingStart="12dp">
+
+                    <TextView
+                        android:id="@+id/tvGitPanelTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Git"
+                        android:textColor="#CCCCCC"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <LinearLayout
+                        android:id="@+id/gitPanelContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp">
+
+                        <TextView
+                            android:id="@+id/tvGitPlaceholder"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/ide_git_placeholder"
+                            android:textColor="#666666"
+                            android:textSize="13sp"
+                            android:gravity="center"
+                            android:padding="16dp" />
+                    </LinearLayout>
+                </ScrollView>
+            </LinearLayout>
+
+            <!-- Extensions panel -->
+            <LinearLayout
+                android:id="@+id/panelExtensions"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="#2D2D2D"
+                    android:paddingStart="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/ide_panel_extensions"
+                        android:textColor="#CCCCCC"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvExtCount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp"
+                    android:textColor="#888888"
+                    android:textSize="12sp"
+                    android:text="@string/ide_ext_panel_hint" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnExtManage"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:text="@string/ide_ext_open_manager" />
+            </LinearLayout>
+
+            <!-- Extensions custom panels -->
+            <FrameLayout
+                android:id="@+id/panelExtContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- 拖动分隔线 -->
+        <View
+            android:id="@+id/panelDivider"
+            android:layout_width="4dp"
+            android:layout_height="match_parent"
+            android:background="#2D2D2D"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- Editor -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="#1E1E1E">
+
+            <HorizontalScrollView
+                android:id="@+id/tabScroll"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:background="#252526"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/tabBar"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <WebView
+                    android:id="@+id/webEditor"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#1E1E1E" />
+
+                <TextView
+                    android:id="@+id/tvEditorPlaceholder"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:textColor="#666666"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:text="@string/ide_editor_placeholder" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Terminal (bottom) -->
+    <LinearLayout
+        android:id="@+id/terminalPanel"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:orientation="vertical"
+        android:background="#181818">
+
+        <LinearLayout
+            android:id="@+id/terminalHeader"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:background="?attr/selectableItemBackground">
+
+            <TextView
+                android:id="@+id/tvTerminalArrow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="▶"
+                android:textColor="#888888"
+                android:textSize="10sp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="@string/ide_terminal"
+                android:textColor="#CCCCCC"
+                android:textSize="13sp" />
+
+            <ImageButton
+                android:id="@+id/btnTerminalCopy"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_edit"
+                android:scaleType="centerInside" />
+
+            <ImageButton
+                android:id="@+id/btnTerminalClear"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:scaleType="centerInside" />
+        </LinearLayout>
+
+        <ScrollView
+            android:id="@+id/terminalScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvTerminal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textColor="#CCCCCC"
+                android:textSize="12sp"
+                android:textIsSelectable="true" />
+        </ScrollView>
+    </LinearLayout>
+</LinearLayout>

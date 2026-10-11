@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+    <title>Editor</title>
+    <link rel="stylesheet" href="lib/codemirror.css">
+    <style>
+        html, body {
+            margin: 0; padding: 0; height: 100%;
+            background: #1e1e1e; color: #d4d4d4;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        .CodeMirror {
+            height: 100%;
+            font-size: 13px;
+            font-family: 'Consolas', 'Menlo', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .CodeMirror-gutters { background: #252526; border-right: 1px solid #333; }
+        .CodeMirror-linenumber { color: #858585; }
+        .CodeMirror-cursor { border-left: 2px solid #ffb300; }
+        .CodeMirror-selected { background: #264f78 !important; }
+        .cm-keyword { color: #569cd6; }
+        .cm-string { color: #ce9178; }
+        .cm-comment { color: #6a9955; }
+        .cm-number { color: #b5cea8; }
+        .cm-def { color: #dcdcaa; }
+        .cm-tag { color: #569cd6; }
+        .cm-attribute { color: #9cdcfe; }
+        .cm-error-line { background: rgba(229, 57, 53, 0.25) !important; }
+    </style>
+</head>
+<body>
+<textarea id="code"></textarea>
+
+<script src="lib/codemirror.js"></script>
+<script src="mode/xml/xml.js"></script>
+<script src="mode/javascript/javascript.js"></script>
+<script src="mode/css/css.js"></script>
+<script src="mode/htmlmixed/htmlmixed.js"></script>
+<script src="mode/clike/clike.js"></script>
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+        lineNumbers: true,
+        indentUnit: 4,
+        tabSize: 4,
+        indentWithTabs: false,
+        lineWrapping: true,
+        matchBrackets: true,
+        autoCloseBrackets: false,
+        theme: "default"
+    });
+    editor.getWrapperElement().style.display = 'none';
+    var docs = {};        // path -> CodeMirror.Doc
+    var current = null;   // 当前 path
+    var suppressChange = false;
+
+    editor.on("change", function() {
+        if (suppressChange) return;
+        if (!current) return;
+        try {
+            if (window.AndroidBridge && window.AndroidBridge.onDocChanged) {
+                window.AndroidBridge.onDocChanged(current);
+            }
+        } catch (e) {}
+    });
+    window.openFile = function(path, content, mode) {
+        editor.getWrapperElement().style.display = '';
+        if (docs[path]) {
+            switchTo(path);
+            return;
+        }
+        var doc = new CodeMirror.Doc(content || "", mode || "text/plain");
+        docs[path] = doc;
+        suppressChange = true;
+        editor.swapDoc(doc);
+        suppressChange = false;
+        current = path;
+        editor.focus();
+        setTimeout(function() { editor.refresh(); }, 30);
+    };
+
+    window.switchTo = function(path) {
+        if (!docs[path]) return;
+        suppressChange = true;
+        editor.swapDoc(docs[path]);
+        suppressChange = false;
+        current = path;
+        editor.focus();
+        setTimeout(function() { editor.refresh(); }, 30);
+    };
+
+    window.closeFile = function(path) {
+        delete docs[path];
+        if (current === path) {
+            current = null;
+        }
+    };
+
+    window.getContent = function(path) {
+        if (!docs[path]) return "";
+        return docs[path].getValue();
+    };
+
+    window.markClean = function(path) {
+        // 保留接口，暂不用
+    };
+
+    setTimeout(function() {
+        if (window.AndroidBridge && window.AndroidBridge.onReady) {
+            window.AndroidBridge.onReady();
+        }
+    }, 100);
+        // 修复：触摸编辑器区域时主动 focus，避免"必须长按才能输入"
+    document.addEventListener('touchstart', function(e) {
+        if (!editor) return;
+        var wrapper = editor.getWrapperElement();
+        if (!wrapper) return;
+        var rect = wrapper.getBoundingClientRect();
+        if (!e.touches || e.touches.length === 0) return;
+        var x = e.touches[0].clientX;
+        var y = e.touches[0].clientY;
+        if (x >= rect.left && x <= rect.right &&
+            y >= rect.top && y <= rect.bottom) {
+            editor.focus();
+        }
+    }, {passive: true, capture: true});
+        window.gotoLine = function(line) {
+        if (!current) return;
+        var lineNum = Math.max(0, (line || 1) - 1);
+        var info = editor.lineInfo(lineNum);
+        editor.setCursor({line: lineNum, ch: 0});
+        editor.scrollIntoView({line: lineNum, ch: 0}, 300);
+        editor.focus();
+        // 简单高亮：闪一下那行
+        editor.addLineClass(lineNum, "background", "cm-error-line");
+        setTimeout(function() {
+            editor.removeLineClass(lineNum, "background", "cm-error-line");
+        }, 2000);
+    };
+</script>
+</body>
+</html>

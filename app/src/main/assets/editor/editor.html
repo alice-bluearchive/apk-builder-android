@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+    <title>Editor</title>
+    <link rel="stylesheet" href="lib/codemirror.css">
+    <style>
+        html, body {
+          margin: 0; padding: 0; height: 100%;
+          background: #1e1e1e; color: #d4d4d4;
+          font-family: monospace;
+        }
+        .CodeMirror {
+          height: 100vh;
+          font-size: 13px;
+          font-family: 'Consolas', 'Menlo', monospace;
+          background: #1e1e1e;
+          color: #d4d4d4;
+        }
+        .CodeMirror-gutters { background: #252526; border-right: 1px solid #333; }
+        .CodeMirror-linenumber { color: #858585; }
+        .CodeMirror-cursor { border-left: 2px solid #ffb300; }
+        .CodeMirror-selected { background: #264f78 !important; }
+        .cm-keyword { color: #569cd6; }
+        .cm-string { color: #ce9178; }
+        .cm-comment { color: #6a9955; }
+        .cm-number { color: #b5cea8; }
+        .cm-def { color: #dcdcaa; }
+        .cm-tag { color: #569cd6; }
+        .cm-attribute { color: #9cdcfe; }
+    </style>
+</head>
+<body>
+<textarea id="code"></textarea>
+
+<script src="lib/codemirror.js"></script>
+<script src="mode/xml/xml.js"></script>
+<script src="mode/javascript/javascript.js"></script>
+<script src="mode/css/css.js"></script>
+<script src="mode/htmlmixed/htmlmixed.js"></script>
+<script src="mode/clike/clike.js"></script>
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+      lineNumbers: true,
+      indentUnit: 4,
+      tabSize: 4,
+      indentWithTabs: false,
+      lineWrapping: true,
+      matchBrackets: true,
+      autoCloseBrackets: false,
+      theme: "default"
+    });
+
+    window.loadContent = function(text, mode) {
+      editor.setValue(text || "");
+      if (mode) editor.setOption("mode", mode);
+      setTimeout(function() { editor.refresh(); }, 50);
+    };
+
+    window.getContent = function() {
+      return editor.getValue();
+    };
+
+    window.setOriginal = function(text) {
+      window._original = text;
+    };
+
+    // 通知 Android 编辑器就绪
+    setTimeout(function() {
+      if (window.AndroidBridge && window.AndroidBridge.onReady) {
+        window.AndroidBridge.onReady();
+      }
+    }, 100);
+</script>
+</body>
+</html>

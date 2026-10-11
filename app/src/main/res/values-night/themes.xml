@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.ApkBuilder" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#FFC107</item>
+        <item name="colorOnPrimary">#1A1A1A</item>
+        <item name="colorPrimaryContainer">#5D4200</item>
+        <item name="colorOnPrimaryContainer">#FFE082</item>
+        <item name="colorSecondary">#BDBDBD</item>
+        <item name="colorOnSecondary">#1A1A1A</item>
+        <item name="colorSecondaryContainer">#424242</item>
+        <item name="colorOnSecondaryContainer">#EEEEEE</item>
+        <item name="colorSurface">#121212</item>
+        <item name="colorOnSurface">#EEEEEE</item>
+        <item name="colorSurfaceVariant">#2A2A2A</item>
+        <item name="colorOnSurfaceVariant">#BDBDBD</item>
+        <item name="android:statusBarColor">?attr/colorPrimary</item>
+    </style>
+</resources>
