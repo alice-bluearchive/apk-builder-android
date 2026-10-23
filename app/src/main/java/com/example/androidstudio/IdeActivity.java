@@ -1,5 +1,4 @@
-package com.example.androidstudio;
-
+﻿package com.example.androidstudio;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -23,16 +22,13 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
 import com.google.android.material.button.MaterialButton;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -46,32 +42,26 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-
 public class IdeActivity extends AppCompatActivity {
-
     private static final int TERMINAL_COLLAPSED_DP = 40;
     private static final int TERMINAL_EXPANDED_DP = 220;
     private static final int TAB_ACTIVE_BG = 0xFF1E1E1E;
     private static final int TAB_INACTIVE_BG = 0xFF2D2D2D;
     private static final int ICON_ON = 0xFFFFC107;
     private static final int ICON_OFF = 0xFF5A5A5A;
-
     private static final int MIN_PANEL_DP = 140;
     private static final int MAX_PANEL_DP = 520;
     private static final int DEFAULT_PANEL_DP = 240;
     private static final String PREF_IDE = "ide_prefs";
     private static final String PREF_PANEL_WIDTH = "panel_width";
-
     private String projectName;
     private File projectRoot;
     private RecyclerView fileTree;
     private FileTreeAdapter adapter;
-
     private TextView tvTitle, tvEditorPlaceholder, tvTerminal, tvTerminalArrow;
     private ImageButton btnBack, btnMenu, btnBuild, btnSave, btnToggleSidebar,
             btnTerminalCopy, btnTerminalClear,
             btnNewFile, btnNewFolder, btnRefreshTree;
-
     private ImageButton iconFiles, iconSearch, iconGit, iconExtensions;
     private LinearLayout iconBar, iconBarExt;
     private FrameLayout panelContainer;
@@ -81,7 +71,6 @@ public class IdeActivity extends AppCompatActivity {
     private TextView tvGitPlaceholder;
     private TextView tvExtCount;
     private MaterialButton btnExtManage;
-
     private EditText etSearch;
     private ImageButton btnSearchClear;
     private TextView tvSearchStatus;
@@ -89,39 +78,30 @@ public class IdeActivity extends AppCompatActivity {
     private final List<SearchResult> searchResults = new ArrayList<>();
     private SearchAdapter searchAdapter;
     private volatile boolean searching = false;
-
     private LinearLayout terminalPanel, terminalHeader, tabBar;
     private ScrollView terminalScroll;
     private HorizontalScrollView tabScroll;
     private WebView webEditor;
-
     private final List<FileNode> allNodes = new ArrayList<>();
     private final List<FileNode> visibleNodes = new ArrayList<>();
-
     private final List<EditorTab> tabs = new ArrayList<>();
     private EditorTab currentTab = null;
-
     private final List<ExtensionManager.MenuItem> extMenuItems = new ArrayList<>();
     private final List<SidebarPanelSpec> extSidebarPanels = new ArrayList<>();
     private final java.util.Map<String, View> extPanelViewCache =
             new java.util.HashMap<>();
     private int lastExtGeneration = -1;
-
     private boolean terminalExpanded = false;
     private volatile boolean building = false;
-
     private String activePanel = "files";
     private String lastActivePanel = "files";
-
     private View panelDivider;
     private float panelDragStartX;
     private int panelDragStartWidth;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ide);
-
         projectName = getIntent().getStringExtra("project");
         if (projectName == null) {
             Toast.makeText(this, "No project", Toast.LENGTH_SHORT).show();
@@ -129,7 +109,6 @@ public class IdeActivity extends AppCompatActivity {
             return;
         }
         projectRoot = ProjectStore.dir(projectName);
-
         bindViews();
         setupToolbar();
         setupSideBar();
@@ -138,7 +117,6 @@ public class IdeActivity extends AppCompatActivity {
         setupFileTree();
         hideEditor();
         refreshExtPanel();
-
         ExtensionManager mgr = ExtensionManager.get(this);
         mgr.setLogger(this::terminalLog);
         mgr.ensureInit();
@@ -150,7 +128,6 @@ public class IdeActivity extends AppCompatActivity {
         lastExtGeneration = mgr.getGeneration();
         renderExtensionPanels();
     }
-
     private void bindViews() {
         tvTitle = findViewById(R.id.tvTitle);
         tvTitle.setText(projectName);
@@ -174,7 +151,6 @@ public class IdeActivity extends AppCompatActivity {
         btnNewFile = findViewById(R.id.btnNewFile);
         btnNewFolder = findViewById(R.id.btnNewFolder);
         btnRefreshTree = findViewById(R.id.btnRefreshTree);
-
         iconBar = findViewById(R.id.iconBar);
         iconBarExt = findViewById(R.id.iconBarExt);
         iconFiles = findViewById(R.id.iconFiles);
@@ -197,42 +173,33 @@ public class IdeActivity extends AppCompatActivity {
         listSearchResult = findViewById(R.id.listSearchResult);
         panelDivider = findViewById(R.id.panelDivider);
     }
-
     private void setupToolbar() {
         btnBack.setOnClickListener(v -> finish());
         btnToggleSidebar.setOnClickListener(v -> toggleSidebar());
         btnMenu.setOnClickListener(v -> showMenu());
         btnSave.setOnClickListener(v -> saveCurrentFile());
         btnBuild.setOnClickListener(v -> onBuildClicked());
-
         btnNewFile.setOnClickListener(v -> promptCreate(projectRoot, false));
         btnNewFolder.setOnClickListener(v -> promptCreate(projectRoot, true));
         btnRefreshTree.setOnClickListener(v -> rebuildTree());
     }
-
-    // ============== 侧边栏 ==============
-
+    // ============== 渚ц竟鏍?==============
     private void setupSideBar() {
         iconFiles.setOnClickListener(v -> togglePanel("files"));
         iconSearch.setOnClickListener(v -> togglePanel("search"));
         iconGit.setOnClickListener(v -> togglePanel("git"));
         iconExtensions.setOnClickListener(v -> togglePanel("extensions"));
-
         btnExtManage.setOnClickListener(v ->
                 startActivity(new Intent(this, ExtensionActivity.class)));
-
         setupSearch();
         setupPanelResize();
-
         int saved = getSharedPreferences(PREF_IDE, MODE_PRIVATE)
                 .getInt(PREF_PANEL_WIDTH, dp(DEFAULT_PANEL_DP));
         ViewGroup.LayoutParams lp = panelContainer.getLayoutParams();
         lp.width = saved;
         panelContainer.setLayoutParams(lp);
-
         selectPanel("files");
     }
-
     private void setupPanelResize() {
         panelDivider.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
@@ -262,7 +229,6 @@ public class IdeActivity extends AppCompatActivity {
             }
             return false;
         });
-
         panelDivider.setOnClickListener(new View.OnClickListener() {
             private long lastClick = 0;
             @Override
@@ -280,7 +246,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         });
     }
-
     private void togglePanel(String name) {
         if (iconBar.getVisibility() != View.VISIBLE) {
             showSidebar();
@@ -293,7 +258,6 @@ public class IdeActivity extends AppCompatActivity {
         }
         selectPanel(name);
     }
-
     private void hideSidebar() {
         if (activePanel != null) lastActivePanel = activePanel;
         activePanel = null;
@@ -302,13 +266,11 @@ public class IdeActivity extends AppCompatActivity {
         panelDivider.setVisibility(View.GONE);
         updateIconTint();
     }
-
     private void showSidebar() {
         iconBar.setVisibility(View.VISIBLE);
         panelContainer.setVisibility(View.VISIBLE);
         panelDivider.setVisibility(View.VISIBLE);
     }
-
     private void toggleSidebar() {
         if (iconBar.getVisibility() == View.VISIBLE) {
             hideSidebar();
@@ -318,7 +280,6 @@ public class IdeActivity extends AppCompatActivity {
             selectPanel(target);
         }
     }
-
     private void selectPanel(String name) {
         activePanel = name;
         lastActivePanel = name;
@@ -326,15 +287,12 @@ public class IdeActivity extends AppCompatActivity {
         panelContainer.setVisibility(View.VISIBLE);
         panelDivider.setVisibility(View.VISIBLE);
         panelExtContainer.setVisibility(View.GONE);
-
         panelFiles.setVisibility("files".equals(name) ? View.VISIBLE : View.GONE);
         panelSearch.setVisibility("search".equals(name) ? View.VISIBLE : View.GONE);
         panelGit.setVisibility("git".equals(name) ? View.VISIBLE : View.GONE);
         panelExtensions.setVisibility("extensions".equals(name) ? View.VISIBLE : View.GONE);
-
         updateIconTint();
     }
-
     private void updateIconTint() {
         boolean sidebarVisible = iconBar.getVisibility() == View.VISIBLE;
         iconFiles.setImageTintList(ColorStateList.valueOf(
@@ -345,7 +303,6 @@ public class IdeActivity extends AppCompatActivity {
                 sidebarVisible && "git".equals(activePanel) ? ICON_ON : ICON_OFF));
         iconExtensions.setImageTintList(ColorStateList.valueOf(
                 sidebarVisible && "extensions".equals(activePanel) ? ICON_ON : ICON_OFF));
-
         if (iconBarExt != null) {
             for (int i = 0; i < iconBarExt.getChildCount(); i++) {
                 View c = iconBarExt.getChildAt(i);
@@ -358,19 +315,16 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
-
     private void refreshExtPanel() {
         int n = ExtensionManager.get(this).getInstalled().size();
         tvExtCount.setText(getString(R.string.ide_ext_panel_hint, n));
     }
-
-    // ============== 渲染扩展的侧边栏面板 ==============
-
+    // ============== 娓叉煋鎵╁睍鐨勪晶杈规爮闈㈡澘 ==============
     private void renderExtensionPanels() {
         iconBarExt.removeAllViews();
         panelExtContainer.removeAllViews();
         extPanelViewCache.clear();
-        // git 面板先复位
+        // git 闈㈡澘鍏堝浣?
         gitPanelContent.removeAllViews();
         if (tvGitPlaceholder != null) {
             if (tvGitPlaceholder.getParent() != null) {
@@ -379,7 +333,6 @@ public class IdeActivity extends AppCompatActivity {
             gitPanelContent.addView(tvGitPlaceholder);
             tvGitPlaceholder.setVisibility(View.VISIBLE);
         }
-
         for (SidebarPanelSpec spec : extSidebarPanels) {
             if ("git".equals(spec.iconName)) {
                 renderIntoGitPanel(spec);
@@ -388,7 +341,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
-
     private void renderIntoGitPanel(SidebarPanelSpec spec) {
         if (tvGitPlaceholder != null) {
             tvGitPlaceholder.setVisibility(View.GONE);
@@ -400,16 +352,14 @@ public class IdeActivity extends AppCompatActivity {
             gitPanelContent.addView(btn);
         }
     }
-
     private void renderCustomPanel(final SidebarPanelSpec spec) {
-        // ---------- 图标 ----------
+        // ---------- 鍥炬爣 ----------
         final ImageButton icon = new ImageButton(this);
         icon.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
         icon.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-
         boolean iconSet = false;
-        // 优先：扩展自带 icon.png
+        // 浼樺厛锛氭墿灞曡嚜甯?icon.png
         if (spec.iconFile != null && !spec.iconFile.isEmpty()
                 && spec.extDir != null) {
             File f = new File(spec.extDir, spec.iconFile);
@@ -424,14 +374,13 @@ public class IdeActivity extends AppCompatActivity {
                 } catch (Throwable ignored) {}
             }
         }
-        // 兜底：内置图标集
+        // 鍏滃簳锛氬唴缃浘鏍囬泦
         if (!iconSet) {
             icon.setImageResource(iconResFor(spec.iconName));
             icon.setImageTintList(ColorStateList.valueOf(ICON_OFF));
         }
         iconBarExt.addView(icon);
-
-        // ---------- 面板容器 ----------
+        // ---------- 闈㈡澘瀹瑰櫒 ----------
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackgroundColor(0xFF252526);
@@ -439,8 +388,7 @@ public class IdeActivity extends AppCompatActivity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         panel.setVisibility(View.GONE);
-
-        // 标题栏
+        // 鏍囬鏍?
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setBackgroundColor(0xFF2D2D2D);
@@ -454,11 +402,10 @@ public class IdeActivity extends AppCompatActivity {
         title.setTextSize(12);
         header.addView(title);
         panel.addView(header);
-
-        // ---------- 内容区 ----------
+        // ---------- 鍐呭鍖?----------
         View contentView;
         if (spec.viewFactory != null) {
-            // 扩展自定义 View
+            // 鎵╁睍鑷畾涔?View
             View cached = extPanelViewCache.get(spec.id);
             if (cached != null) {
                 contentView = cached;
@@ -478,7 +425,7 @@ public class IdeActivity extends AppCompatActivity {
             contentView.setLayoutParams(lp);
             panel.addView(contentView);
         } else {
-            // items 列表
+            // items 鍒楄〃
             ScrollView sv = new ScrollView(this);
             LinearLayout items = new LinearLayout(this);
             items.setOrientation(LinearLayout.VERTICAL);
@@ -494,10 +441,8 @@ public class IdeActivity extends AppCompatActivity {
             panel.addView(sv);
             contentView = sv;
         }
-
         panelExtContainer.addView(panel);
-
-        // ---------- 点击切换面板 ----------
+        // ---------- 鐐瑰嚮鍒囨崲闈㈡澘 ----------
         final String panelKey = "ext:" + spec.id;
         icon.setOnClickListener(v -> {
             if (panelKey.equals(activePanel)) {
@@ -522,7 +467,6 @@ public class IdeActivity extends AppCompatActivity {
             updateIconTint();
         });
     }
-
     private View buildErrorView(String msg) {
         TextView tv = new TextView(this);
         tv.setText(msg);
@@ -531,7 +475,6 @@ public class IdeActivity extends AppCompatActivity {
         tv.setPadding(dp(16), dp(16), dp(16), dp(16));
         return tv;
     }
-
     private MaterialButton makePanelButton(String label) {
         MaterialButton btn = new MaterialButton(this, null,
                 com.google.android.material.R.attr.borderlessButtonStyle);
@@ -549,13 +492,11 @@ public class IdeActivity extends AppCompatActivity {
         btn.setLayoutParams(lp);
         return btn;
     }
-
     private void safeRun(Runnable r) {
         if (r == null) return;
         try { r.run(); }
-        catch (Throwable t) { toast("扩展出错: " + t.getMessage()); }
+        catch (Throwable t) { toast("鎵╁睍鍑洪敊: " + t.getMessage()); }
     }
-
     private int iconResFor(String name) {
         if (name == null) return R.drawable.ic_side_extensions;
         switch (name) {
@@ -564,28 +505,20 @@ public class IdeActivity extends AppCompatActivity {
             case "git":        return R.drawable.ic_side_git;
             case "extensions": return R.drawable.ic_side_extensions;
             case "terminal":   return R.drawable.ic_side_terminal;
-            case "robot":      return R.drawable.ic_side_robot;
-            case "database":   return R.drawable.ic_side_database;
-            case "cloud":      return R.drawable.ic_side_cloud;
-            case "settings":   return R.drawable.ic_side_settings;
             default:           return R.drawable.ic_side_extensions;
         }
     }
-
-    // ============== 搜索 ==============
-
+    // ============== 鎼滅储 ==============
     private void setupSearch() {
         listSearchResult.setLayoutManager(new LinearLayoutManager(this));
         searchAdapter = new SearchAdapter(searchResults,
                 projectRoot.getAbsolutePath(),
                 r -> onSearchResultClick(r));
         listSearchResult.setAdapter(searchAdapter);
-
         etSearch.setOnEditorActionListener((v, actionId, event) -> {
             startSearch(etSearch.getText().toString());
             return true;
         });
-
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
             private long last = 0;
             @Override
@@ -602,7 +535,6 @@ public class IdeActivity extends AppCompatActivity {
                 }, 500);
             }
         });
-
         btnSearchClear.setOnClickListener(v -> {
             etSearch.setText("");
             searchResults.clear();
@@ -610,7 +542,6 @@ public class IdeActivity extends AppCompatActivity {
             tvSearchStatus.setText("");
         });
     }
-
     private void startSearch(String query) {
         if (searching) return;
         if (query == null || query.trim().isEmpty()) {
@@ -620,10 +551,9 @@ public class IdeActivity extends AppCompatActivity {
             return;
         }
         final String q = query.trim();
-
         if ("*".equals(q)) {
             searching = true;
-            tvSearchStatus.setText("诊断：列出所有文件…");
+            tvSearchStatus.setText("璇婃柇锛氬垪鍑烘墍鏈夋枃浠垛€?);
             new Thread(() -> {
                 List<SearchResult> results = new ArrayList<>();
                 listAllFiles(projectRoot, results);
@@ -633,16 +563,14 @@ public class IdeActivity extends AppCompatActivity {
                     searchResults.clear();
                     searchResults.addAll(results);
                     searchAdapter.notifyDataSetChanged();
-                    tvSearchStatus.setText("共 " + count + " 个文件（根: "
-                            + projectRoot.getAbsolutePath() + "）");
+                    tvSearchStatus.setText("鍏?" + count + " 涓枃浠讹紙鏍? "
+                            + projectRoot.getAbsolutePath() + "锛?);
                 });
             }, "diag").start();
             return;
         }
-
         searching = true;
         tvSearchStatus.setText(getString(R.string.ide_search_searching, q));
-
         new Thread(() -> {
             List<SearchResult> results = new ArrayList<>();
             scanDir(projectRoot, q, results);
@@ -662,7 +590,6 @@ public class IdeActivity extends AppCompatActivity {
             });
         }, "search").start();
     }
-
     private void listAllFiles(File dir, List<SearchResult> out) {
         if (dir == null || !dir.exists()) return;
         File[] kids = dir.listFiles();
@@ -687,7 +614,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
-
     private void scanDir(File dir, String query, List<SearchResult> out) {
         if (out.size() >= 500) return;
         File[] kids = dir.listFiles();
@@ -704,7 +630,6 @@ public class IdeActivity extends AppCompatActivity {
             } else {
                 String name = f.getName().toLowerCase();
                 String q = query.toLowerCase();
-
                 int nameIdx = name.indexOf(q);
                 if (nameIdx >= 0) {
                     SearchResult r = new SearchResult();
@@ -716,14 +641,12 @@ public class IdeActivity extends AppCompatActivity {
                     out.add(r);
                     if (out.size() >= 500) return;
                 }
-
                 if (!isTextFile(name)) continue;
                 if (f.length() > 500 * 1024) continue;
                 scanFile(f, query, out);
             }
         }
     }
-
     private void scanFile(File f, String query, List<SearchResult> out) {
         String q = query.toLowerCase();
         try (BufferedReader br = new BufferedReader(
@@ -740,7 +663,6 @@ public class IdeActivity extends AppCompatActivity {
                     r.line = num;
                     r.matchStart = idx;
                     r.matchEnd = idx + query.length();
-
                     int ctxBefore = 20;
                     int ctxAfter = 120;
                     int start = Math.max(0, idx - ctxBefore);
@@ -749,20 +671,18 @@ public class IdeActivity extends AppCompatActivity {
                     r.matchStart = idx - start;
                     r.matchEnd = r.matchStart + query.length();
                     if (start > 0) {
-                        snippet = "…" + snippet;
+                        snippet = "鈥? + snippet;
                         r.matchStart += 1;
                         r.matchEnd += 1;
                     }
-                    if (end < line.length()) snippet = snippet + "…";
+                    if (end < line.length()) snippet = snippet + "鈥?;
                     r.lineText = snippet;
-
                     out.add(r);
                     if (out.size() >= 500) return;
                 }
             }
         } catch (Exception ignored) {}
     }
-
     private static boolean isTextFile(String name) {
         String[] exts = {".java", ".kt", ".xml", ".html", ".htm", ".js", ".css",
                 ".json", ".txt", ".md", ".gradle", ".kts", ".properties",
@@ -771,18 +691,15 @@ public class IdeActivity extends AppCompatActivity {
         for (String e : exts) if (name.endsWith(e)) return true;
         return false;
     }
-
     private void onSearchResultClick(SearchResult r) {
         openFileAtLine(r.file.getAbsolutePath(), r.line <= 0 ? 1 : r.line);
     }
-
     private void openFileAtLine(String path, int line) {
         File f = new File(path);
         if (!f.exists()) {
-            toast("文件不存在: " + path);
+            toast("鏂囦欢涓嶅瓨鍦? " + path);
             return;
         }
-
         for (EditorTab t : tabs) {
             if (t.path.equals(path)) {
                 selectTab(t);
@@ -790,13 +707,11 @@ public class IdeActivity extends AppCompatActivity {
                 return;
             }
         }
-
         EditorTab tab = new EditorTab(path, f.getName());
         tabs.add(tab);
         currentTab = tab;
         refreshTabBar();
         showEditor();
-
         try {
             String content = readText(f);
             String mode = modeForFile(f.getName());
@@ -807,17 +722,15 @@ public class IdeActivity extends AppCompatActivity {
             webEditor.evaluateJavascript(js, null);
             postGotoLine(line);
         } catch (Exception e) {
-            toast("打开失败: " + e.getMessage());
+            toast("鎵撳紑澶辫触: " + e.getMessage());
         }
     }
-
     private void postGotoLine(final int line) {
         webEditor.postDelayed(() -> {
             String js = "window.gotoLine(" + line + ");";
             webEditor.evaluateJavascript(js, null);
         }, 250);
     }
-
     private void setupTerminal() {
         terminalHeader.setOnClickListener(v -> toggleTerminal());
         btnTerminalClear.setOnClickListener(v -> tvTerminal.setText(""));
@@ -832,7 +745,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         });
     }
-
     private void setupWebEditor() {
         WebSettings ws = webEditor.getSettings();
         ws.setJavaScriptEnabled(true);
@@ -850,14 +762,12 @@ public class IdeActivity extends AppCompatActivity {
         webEditor.loadUrl("file:///android_asset/editor/editor_multi.html");
         webEditor.requestFocus();
     }
-
     private void setupFileTree() {
         fileTree.setLayoutManager(new LinearLayoutManager(this));
         DefaultItemAnimator anim = new DefaultItemAnimator();
         anim.setAddDuration(180);
         anim.setRemoveDuration(180);
         fileTree.setItemAnimator(anim);
-
         buildTree(projectRoot);
         refreshVisible();
         adapter = new FileTreeAdapter(visibleNodes, new FileTreeAdapter.OnNodeClick() {
@@ -875,20 +785,16 @@ public class IdeActivity extends AppCompatActivity {
                     onFileClick(node);
                 }
             }
-
             @Override
             public void onLongClick(FileNode node) {
                 showNodeMenu(node);
             }
         });
         fileTree.setAdapter(adapter);
-
         terminalLog("APK Builder IDE ready.");
         terminalLog("Project: " + projectName);
     }
-
-    // ============== 文件树 ==============
-
+    // ============== 鏂囦欢鏍?==============
     private void buildTree(File root) {
         allNodes.clear();
         File[] kids = root.listFiles();
@@ -896,7 +802,6 @@ public class IdeActivity extends AppCompatActivity {
         sortEntries(kids);
         for (File k : kids) addNode(k, 0, null);
     }
-
     private void addNode(File f, int depth, FileNode parent) {
         FileNode n = new FileNode();
         n.name = f.getName();
@@ -906,7 +811,6 @@ public class IdeActivity extends AppCompatActivity {
         n.expanded = false;
         n.parent = parent;
         allNodes.add(n);
-
         if (n.isDir) {
             File[] kids = f.listFiles();
             if (kids != null) {
@@ -915,7 +819,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
-
     private static void sortEntries(File[] arr) {
         Arrays.sort(arr, (a, b) -> {
             if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -923,26 +826,22 @@ public class IdeActivity extends AppCompatActivity {
             return a.getName().compareToIgnoreCase(b.getName());
         });
     }
-
     private void rebuildTree() {
         Set<String> expandedPaths = new HashSet<>();
         for (FileNode n : allNodes) {
             if (n.isDir && n.expanded) expandedPaths.add(n.file.getAbsolutePath());
         }
-
         allNodes.clear();
         File[] kids = projectRoot.listFiles();
         if (kids != null) {
             sortEntries(kids);
             for (File k : kids) addNode(k, 0, null);
         }
-
         for (FileNode n : allNodes) {
             if (n.isDir && expandedPaths.contains(n.file.getAbsolutePath())) {
                 n.expanded = true;
             }
         }
-
         visibleNodes.clear();
         for (FileNode n : allNodes) {
             boolean visible = true;
@@ -955,7 +854,6 @@ public class IdeActivity extends AppCompatActivity {
         }
         if (adapter != null) adapter.notifyDataSetChanged();
     }
-
     private void refreshVisible() {
         List<FileNode> newVisible = new ArrayList<>();
         for (FileNode n : allNodes) {
@@ -967,23 +865,19 @@ public class IdeActivity extends AppCompatActivity {
             }
             if (visible) newVisible.add(n);
         }
-
         if (adapter == null) {
             visibleNodes.clear();
             visibleNodes.addAll(newVisible);
             return;
         }
-
         int oldSize = visibleNodes.size();
         int newSize = newVisible.size();
-
         int firstDiff = 0;
         while (firstDiff < oldSize && firstDiff < newSize
                 && visibleNodes.get(firstDiff) == newVisible.get(firstDiff)) {
             firstDiff++;
         }
         if (firstDiff == oldSize && firstDiff == newSize) return;
-
         int tailOld = oldSize - 1;
         int tailNew = newSize - 1;
         while (tailOld >= firstDiff && tailNew >= firstDiff
@@ -991,19 +885,14 @@ public class IdeActivity extends AppCompatActivity {
             tailOld--;
             tailNew--;
         }
-
         int removeCount = tailOld - firstDiff + 1;
         int insertCount = tailNew - firstDiff + 1;
-
         visibleNodes.clear();
         visibleNodes.addAll(newVisible);
-
         if (removeCount > 0) adapter.notifyItemRangeRemoved(firstDiff, removeCount);
         if (insertCount > 0) adapter.notifyItemRangeInserted(firstDiff, insertCount);
     }
-
-    // ============== 长按菜单 ==============
-
+    // ============== 闀挎寜鑿滃崟 ==============
     private void showNodeMenu(final FileNode node) {
         final List<String> items = new ArrayList<>();
         if (node.isDir) {
@@ -1013,7 +902,6 @@ public class IdeActivity extends AppCompatActivity {
         items.add(getString(R.string.ide_rename));
         items.add(getString(R.string.ide_delete));
         items.add(getString(R.string.ide_copy_path));
-
         new AlertDialog.Builder(this)
                 .setTitle(node.name)
                 .setItems(items.toArray(new String[0]), (d, which) -> {
@@ -1038,18 +926,15 @@ public class IdeActivity extends AppCompatActivity {
                 })
                 .show();
     }
-
     private void promptCreate(final File parentDir, final boolean isFolder) {
         final EditText et = new EditText(this);
         et.setHint(isFolder ? getString(R.string.ide_foldername_hint)
                 : getString(R.string.ide_filename_hint));
         et.setInputType(InputType.TYPE_CLASS_TEXT);
         et.setSingleLine(true);
-
         String title = (isFolder ? getString(R.string.ide_new_folder)
                 : getString(R.string.ide_new_file))
-                + " · " + parentDir.getName();
-
+                + " 路 " + parentDir.getName();
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(et)
@@ -1096,14 +981,12 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
-
     private void promptRename(final FileNode node) {
         final EditText et = new EditText(this);
         et.setText(node.name);
         et.setInputType(InputType.TYPE_CLASS_TEXT);
         et.setSingleLine(true);
         et.setSelection(node.name.length());
-
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ide_rename)
                 .setView(et)
@@ -1132,7 +1015,6 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
-
     private void confirmDelete(final FileNode node) {
         String msg = node.isDir
                 ? getString(R.string.ide_delete_folder_msg, node.name)
@@ -1150,7 +1032,6 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
-
     private void closeTabByPath(String path) {
         for (int i = tabs.size() - 1; i >= 0; i--) {
             EditorTab t = tabs.get(i);
@@ -1159,7 +1040,6 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
-
     private static void deleteRec(File f) {
         if (f == null || !f.exists()) return;
         if (f.isDirectory()) {
@@ -1168,9 +1048,7 @@ public class IdeActivity extends AppCompatActivity {
         }
         f.delete();
     }
-
-    // ============== 编辑器 tab ==============
-
+    // ============== 缂栬緫鍣?tab ==============
     private void onFileClick(FileNode node) {
         String path = node.file.getAbsolutePath();
         for (EditorTab t : tabs) {
@@ -1184,7 +1062,6 @@ public class IdeActivity extends AppCompatActivity {
         currentTab = tab;
         refreshTabBar();
         showEditor();
-
         try {
             String content = readText(node.file);
             String mode = modeForFile(node.name);
@@ -1198,21 +1075,17 @@ public class IdeActivity extends AppCompatActivity {
             toast(getString(R.string.ide_open_failed, e.getMessage()));
         }
     }
-
     private void selectTab(EditorTab tab) {
         currentTab = tab;
         refreshTabBar();
         webEditor.evaluateJavascript(
                 "window.switchTo(" + escapeJsString(tab.path) + ");", null);
     }
-
     private void closeTab(EditorTab tab) {
         webEditor.evaluateJavascript(
                 "window.closeFile(" + escapeJsString(tab.path) + ");", null);
-
         int idx = tabs.indexOf(tab);
         tabs.remove(tab);
-
         if (currentTab == tab) {
             if (tabs.isEmpty()) {
                 currentTab = null;
@@ -1226,7 +1099,6 @@ public class IdeActivity extends AppCompatActivity {
         }
         refreshTabBar();
     }
-
     private void refreshTabBar() {
         tabBar.removeAllViews();
         for (EditorTab tab : tabs) {
@@ -1235,10 +1107,8 @@ public class IdeActivity extends AppCompatActivity {
             ImageView ivIcon = v.findViewById(R.id.ivTabIcon);
             TextView tvName = v.findViewById(R.id.tvTabName);
             ImageButton btnClose = v.findViewById(R.id.btnTabClose);
-
             ivIcon.setImageResource(iconForName(tab.name));
-            tvName.setText(tab.dirty ? (tab.name + " •") : tab.name);
-
+            tvName.setText(tab.dirty ? (tab.name + " 鈥?) : tab.name);
             if (tab == currentTab) {
                 v.setBackgroundColor(TAB_ACTIVE_BG);
                 tvName.setTextColor(0xFFFFFFFF);
@@ -1246,25 +1116,20 @@ public class IdeActivity extends AppCompatActivity {
                 v.setBackgroundColor(TAB_INACTIVE_BG);
                 tvName.setTextColor(0xFFAAAAAA);
             }
-
             final EditorTab t = tab;
             v.setOnClickListener(vv -> selectTab(t));
             btnClose.setOnClickListener(vv -> closeTab(t));
-
             tabBar.addView(v);
         }
     }
-
     private void showEditor() {
         tvEditorPlaceholder.setVisibility(View.GONE);
         webEditor.setVisibility(View.VISIBLE);
     }
-
     private void hideEditor() {
         tvEditorPlaceholder.setVisibility(View.VISIBLE);
         webEditor.setVisibility(View.INVISIBLE);
     }
-
     private void saveCurrentFile() {
         if (currentTab == null) {
             toast(getString(R.string.ide_no_open_file));
@@ -1286,7 +1151,6 @@ public class IdeActivity extends AppCompatActivity {
                     }
                 });
     }
-
     private void saveAllTabs(final Runnable onDone) {
         final List<EditorTab> dirty = new ArrayList<>();
         for (EditorTab t : tabs) if (t.dirty) dirty.add(t);
@@ -1319,9 +1183,7 @@ public class IdeActivity extends AppCompatActivity {
                     });
         }
     }
-
-    // ============== 构建 ==============
-
+    // ============== 鏋勫缓 ==============
     private void onBuildClicked() {
         if (building) {
             toast(getString(R.string.ide_building));
@@ -1330,14 +1192,12 @@ public class IdeActivity extends AppCompatActivity {
         expandTerminal();
         saveAllTabs(this::startBuild);
     }
-
     private void startBuild() {
         if (building) return;
         building = true;
         setBuildButtonEnabled(false);
         tvTerminal.setText("");
         terminalLog("==== Build " + projectName + " ====");
-
         ProjectBuilder pb = new ProjectBuilder(this,
                 msg -> runOnUiThread(() -> terminalLog(msg)));
         pb.build(projectName, new ProjectBuilder.Done() {
@@ -1348,7 +1208,6 @@ public class IdeActivity extends AppCompatActivity {
                 terminalLog("OK " + apk.getAbsolutePath());
                 showBuildResultDialog(apk);
             }
-
             @Override
             public void onError(String message, Exception e) {
                 building = false;
@@ -1358,12 +1217,10 @@ public class IdeActivity extends AppCompatActivity {
             }
         });
     }
-
     private void setBuildButtonEnabled(boolean enabled) {
         btnBuild.setEnabled(enabled);
         btnBuild.setAlpha(enabled ? 1f : 0.4f);
     }
-
     private void showBuildResultDialog(File apk) {
         String path = apk.getAbsolutePath();
         String size = humanSize(apk.length());
@@ -1375,7 +1232,6 @@ public class IdeActivity extends AppCompatActivity {
                 .setNeutralButton(R.string.ide_btn_close, null)
                 .show();
     }
-
     private void installApk(File apk) {
         try {
             File priv = new File(getExternalFilesDir(null), "apk");
@@ -1387,7 +1243,6 @@ public class IdeActivity extends AppCompatActivity {
                 int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             }
-
             Uri uri = FileProvider.getUriForFile(
                     this, getPackageName() + ".fileprovider", privApk);
             Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -1400,15 +1255,12 @@ public class IdeActivity extends AppCompatActivity {
             terminalLog("[ERR] install: " + e.getMessage());
         }
     }
-
     private static String humanSize(long n) {
         if (n < 1024) return n + " B";
         if (n < 1024 * 1024) return String.format(Locale.US, "%.1f KB", n / 1024.0);
         return String.format(Locale.US, "%.2f MB", n / 1024.0 / 1024.0);
     }
-
-    // ============== 工具 ==============
-
+    // ============== 宸ュ叿 ==============
     private static String modeForFile(String name) {
         String n = name.toLowerCase();
         if (n.endsWith(".java")) return "text/x-java";
@@ -1419,7 +1271,6 @@ public class IdeActivity extends AppCompatActivity {
         if (n.endsWith(".css")) return "css";
         return "text/plain";
     }
-
     private static int iconForName(String name) {
         String n = name.toLowerCase();
         if (n.endsWith(".java")) return R.drawable.ic_file_java;
@@ -1431,7 +1282,6 @@ public class IdeActivity extends AppCompatActivity {
                 || n.endsWith(".bmp")) return R.drawable.ic_file_image;
         return R.drawable.ic_file_generic;
     }
-
     private static String readText(File f) throws Exception {
         try (InputStream in = new FileInputStream(f)) {
             byte[] buf = new byte[(int) f.length()];
@@ -1444,13 +1294,11 @@ public class IdeActivity extends AppCompatActivity {
             return new String(buf, 0, off, "UTF-8");
         }
     }
-
     private static void writeText(File f, String content) throws Exception {
         try (OutputStream os = new FileOutputStream(f)) {
             os.write(content.getBytes("UTF-8"));
         }
     }
-
     private static String escapeJsString(String s) {
         if (s == null) return "''";
         StringBuilder sb = new StringBuilder("'");
@@ -1468,7 +1316,6 @@ public class IdeActivity extends AppCompatActivity {
         sb.append("'");
         return sb.toString();
     }
-
     private static String unescapeJs(String s) {
         if (s == null || s.equals("null")) return "";
         if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
@@ -1514,28 +1361,23 @@ public class IdeActivity extends AppCompatActivity {
         }
         return sb.toString();
     }
-
     private void toggleTerminal() {
         int targetDp = terminalExpanded ? TERMINAL_COLLAPSED_DP : TERMINAL_EXPANDED_DP;
         ViewGroup.LayoutParams lp = terminalPanel.getLayoutParams();
         lp.height = dp(targetDp);
         terminalPanel.setLayoutParams(lp);
         terminalExpanded = !terminalExpanded;
-        tvTerminalArrow.setText(terminalExpanded ? "▼" : "▶");
+        tvTerminalArrow.setText(terminalExpanded ? "鈻? : "鈻?);
         terminalScroll.setVisibility(terminalExpanded ? View.VISIBLE : View.GONE);
     }
-
     private void expandTerminal() {
         if (!terminalExpanded) toggleTerminal();
     }
-
     private void terminalLog(String s) {
         tvTerminal.append(s + "\n");
         terminalScroll.post(() -> terminalScroll.fullScroll(View.FOCUS_DOWN));
     }
-
-    // ============== 菜单 ==============
-
+    // ============== 鑿滃崟 ==============
     private void showMenu() {
         final List<String> items = new ArrayList<>();
         items.add(getString(R.string.ide_menu_settings));
@@ -1545,12 +1387,10 @@ public class IdeActivity extends AppCompatActivity {
         items.add(getString(R.string.ide_menu_copy_log));
         items.add(getString(R.string.ide_menu_clear_log));
         items.add(getString(R.string.ide_menu_extensions));
-
         final int BASE_COUNT = 7;
         for (ExtensionManager.MenuItem m : extMenuItems) {
-            items.add("⤷ " + m.title);
+            items.add("猡?" + m.title);
         }
-
         new AlertDialog.Builder(this)
                 .setItems(items.toArray(new String[0]), (d, which) -> {
                     if (which == 0) {
@@ -1589,11 +1429,9 @@ public class IdeActivity extends AppCompatActivity {
                 })
                 .show();
     }
-
     private void testToolchain() {
         new Thread(() -> {
             ToolchainManager tm = new ToolchainManager(IdeActivity.this);
-
             logAsync("========== aapt2 ==========");
             File aapt2 = tm.getTool("aapt2");
             if (aapt2 == null) logAsync("[FAIL] libaapt2.so not found");
@@ -1601,7 +1439,6 @@ public class IdeActivity extends AppCompatActivity {
                 logAsync("path=" + aapt2 + " canExec=" + aapt2.canExecute());
                 logAsync(tm.exec(Arrays.asList(aapt2.getAbsolutePath(), "version")));
             }
-
             logAsync("========== zipalign ==========");
             File za = tm.getTool("zipalign");
             if (za == null) logAsync("[FAIL] libzipalign.so not found");
@@ -1611,25 +1448,20 @@ public class IdeActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     private void logAsync(String s) {
         runOnUiThread(() -> terminalLog(s));
     }
-
     private int dp(int d) {
         return Math.round(d * getResources().getDisplayMetrics().density);
     }
-
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
-
     @Override
     protected void onResume() {
         super.onResume();
         ExtensionManager mgr = ExtensionManager.get(this);
         mgr.setActivity(this);
-
         int gen = mgr.getGeneration();
         if (gen != lastExtGeneration) {
             lastExtGeneration = gen;
@@ -1639,29 +1471,25 @@ public class IdeActivity extends AppCompatActivity {
             extSidebarPanels.addAll(mgr.getSidebarPanels());
             refreshExtPanel();
             renderExtensionPanels();
-            terminalLog("扩展已刷新：菜单 " + extMenuItems.size()
-                    + " 项，侧边栏面板 " + extSidebarPanels.size() + " 个");
+            terminalLog("鎵╁睍宸插埛鏂帮細鑿滃崟 " + extMenuItems.size()
+                    + " 椤癸紝渚ц竟鏍忛潰鏉?" + extSidebarPanels.size() + " 涓?);
         }
     }
-
     @Override
     protected void onPause() {
         super.onPause();
         ExtensionManager.get(this).setActivity(null);
     }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
         ExtensionManager.get(this).setCurrentProject(null);
     }
-
     public class Bridge {
         @JavascriptInterface
         public void onReady() {
             runOnUiThread(() -> {});
         }
-
         @JavascriptInterface
         public void onDocChanged(String path) {
             runOnUiThread(() -> {
