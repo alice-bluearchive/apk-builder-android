@@ -10,7 +10,7 @@ public interface ExtensionHost {
 
     void registerMenuItem(String title, Runnable action);
 
-    /** 注册侧边栏面板。iconName 从内置图标集里选。 */
+    /** 注册侧边栏面板。iconName 从内置图标集选，iconFile 用扩展自带图。 */
     void registerSidebarPanel(SidebarPanelSpec spec);
 
     void log(String msg);
@@ -18,6 +18,11 @@ public interface ExtensionHost {
     String getCurrentProject();
 
     File getProjectRoot();
+
+    /** 当前扩展的解压目录（私有目录，如 /data/user/0/<pkg>/files/extensions/<id>） */
+    File getExtensionDir();
+
+    // ===== UI 回调 =====
 
     void showMessage(String title, String message);
 

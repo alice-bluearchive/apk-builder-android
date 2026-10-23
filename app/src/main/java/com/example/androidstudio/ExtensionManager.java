@@ -204,7 +204,7 @@ public class ExtensionManager {
         }
 
         IExtension ext = (IExtension) obj;
-        HostImpl host = new HostImpl(info.id);
+        HostImpl host = new HostImpl(info);
         ext.onLoad(host);
         loaded.add(ext);
         log("已加载扩展: " + ext.getId() + " v" + ext.getVersion());
@@ -212,9 +212,11 @@ public class ExtensionManager {
 
     private class HostImpl implements ExtensionHost {
         final String extId;
+        final File extDir;
 
-        HostImpl(String extId) {
-            this.extId = extId;
+        HostImpl(ExtensionInfo info) {
+            this.extId = info.id;
+            this.extDir = info.dir;
         }
 
         @Override
@@ -234,9 +236,16 @@ public class ExtensionManager {
         @Override
         public void registerSidebarPanel(SidebarPanelSpec spec) {
             if (spec == null || spec.id == null || spec.id.isEmpty()) return;
+            spec.extDir = extDir;
             sidebarPanels.add(spec);
-            log("注册侧边栏面板: " + spec.id
-                    + " (" + (spec.items == null ? 0 : spec.items.size()) + " items)");
+
+            int n = (spec.items == null) ? 0 : spec.items.size();
+            String src = (spec.viewFactory != null) ? "custom-view"
+                    : (n + " items");
+            String icon = (spec.iconFile != null && !spec.iconFile.isEmpty())
+                    ? ("icon=" + spec.iconFile)
+                    : ("iconName=" + spec.iconName);
+            log("注册侧边栏面板: " + spec.id + " (" + src + ", " + icon + ")");
         }
 
         @Override
@@ -254,6 +263,10 @@ public class ExtensionManager {
             String p = currentProject;
             if (p == null) return null;
             return ProjectStore.dir(p);
+        }
+        @Override
+        public File getExtensionDir() {
+            return extDir;
         }
 
         @Override

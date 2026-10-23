@@ -103,6 +103,8 @@ public class IdeActivity extends AppCompatActivity {
 
     private final List<ExtensionManager.MenuItem> extMenuItems = new ArrayList<>();
     private final List<SidebarPanelSpec> extSidebarPanels = new ArrayList<>();
+    private final java.util.Map<String, View> extPanelViewCache =
+            new java.util.HashMap<>();
     private int lastExtGeneration = -1;
 
     private boolean terminalExpanded = false;
@@ -367,7 +369,7 @@ public class IdeActivity extends AppCompatActivity {
     private void renderExtensionPanels() {
         iconBarExt.removeAllViews();
         panelExtContainer.removeAllViews();
-
+        extPanelViewCache.clear();
         // git 面板先复位
         gitPanelContent.removeAllViews();
         if (tvGitPlaceholder != null) {
@@ -400,14 +402,36 @@ public class IdeActivity extends AppCompatActivity {
     }
 
     private void renderCustomPanel(final SidebarPanelSpec spec) {
+        // ---------- 图标 ----------
         final ImageButton icon = new ImageButton(this);
         icon.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
         icon.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setImageResource(iconResFor(spec.iconName));
-        icon.setImageTintList(ColorStateList.valueOf(ICON_OFF));
+
+        boolean iconSet = false;
+        // 优先：扩展自带 icon.png
+        if (spec.iconFile != null && !spec.iconFile.isEmpty()
+                && spec.extDir != null) {
+            File f = new File(spec.extDir, spec.iconFile);
+            if (f.exists()) {
+                try {
+                    android.graphics.Bitmap bmp =
+                            android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+                    if (bmp != null) {
+                        icon.setImageBitmap(bmp);
+                        iconSet = true;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        // 兜底：内置图标集
+        if (!iconSet) {
+            icon.setImageResource(iconResFor(spec.iconName));
+            icon.setImageTintList(ColorStateList.valueOf(ICON_OFF));
+        }
         iconBarExt.addView(icon);
 
+        // ---------- 面板容器 ----------
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackgroundColor(0xFF252526);
@@ -416,6 +440,7 @@ public class IdeActivity extends AppCompatActivity {
                 FrameLayout.LayoutParams.MATCH_PARENT));
         panel.setVisibility(View.GONE);
 
+        // 标题栏
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setBackgroundColor(0xFF2D2D2D);
@@ -430,22 +455,49 @@ public class IdeActivity extends AppCompatActivity {
         header.addView(title);
         panel.addView(header);
 
-        ScrollView sv = new ScrollView(this);
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(0, dp(6), 0, dp(6));
-        if (spec.items != null) {
-            for (SidebarPanelItem item : spec.items) {
-                MaterialButton btn = makePanelButton(item.label);
-                btn.setOnClickListener(v -> safeRun(item.onClick));
-                content.addView(btn);
+        // ---------- 内容区 ----------
+        View contentView;
+        if (spec.viewFactory != null) {
+            // 扩展自定义 View
+            View cached = extPanelViewCache.get(spec.id);
+            if (cached != null) {
+                contentView = cached;
+            } else {
+                try {
+                    contentView = spec.viewFactory.create(this);
+                } catch (Throwable t) {
+                    contentView = buildErrorView("viewFactory failed: " + t.getMessage());
+                }
+                if (contentView == null) {
+                    contentView = buildErrorView("viewFactory returned null");
+                }
+                extPanelViewCache.put(spec.id, contentView);
             }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+            contentView.setLayoutParams(lp);
+            panel.addView(contentView);
+        } else {
+            // items 列表
+            ScrollView sv = new ScrollView(this);
+            LinearLayout items = new LinearLayout(this);
+            items.setOrientation(LinearLayout.VERTICAL);
+            items.setPadding(0, dp(6), 0, dp(6));
+            if (spec.items != null) {
+                for (SidebarPanelItem item : spec.items) {
+                    MaterialButton btn = makePanelButton(item.label);
+                    btn.setOnClickListener(v -> safeRun(item.onClick));
+                    items.addView(btn);
+                }
+            }
+            sv.addView(items);
+            panel.addView(sv);
+            contentView = sv;
         }
-        sv.addView(content);
-        panel.addView(sv);
 
         panelExtContainer.addView(panel);
 
+        // ---------- 点击切换面板 ----------
         final String panelKey = "ext:" + spec.id;
         icon.setOnClickListener(v -> {
             if (panelKey.equals(activePanel)) {
@@ -469,6 +521,15 @@ public class IdeActivity extends AppCompatActivity {
             }
             updateIconTint();
         });
+    }
+
+    private View buildErrorView(String msg) {
+        TextView tv = new TextView(this);
+        tv.setText(msg);
+        tv.setTextColor(0xFFE57373);
+        tv.setTextSize(12);
+        tv.setPadding(dp(16), dp(16), dp(16), dp(16));
+        return tv;
     }
 
     private MaterialButton makePanelButton(String label) {
@@ -496,12 +557,19 @@ public class IdeActivity extends AppCompatActivity {
     }
 
     private int iconResFor(String name) {
-        if ("files".equals(name)) return R.drawable.ic_side_files;
-        if ("search".equals(name)) return R.drawable.ic_side_search;
-        if ("git".equals(name)) return R.drawable.ic_side_git;
-        if ("extensions".equals(name)) return R.drawable.ic_side_extensions;
-        if ("terminal".equals(name)) return R.drawable.ic_side_terminal;
-        return R.drawable.ic_side_extensions;
+        if (name == null) return R.drawable.ic_side_extensions;
+        switch (name) {
+            case "files":      return R.drawable.ic_side_files;
+            case "search":     return R.drawable.ic_side_search;
+            case "git":        return R.drawable.ic_side_git;
+            case "extensions": return R.drawable.ic_side_extensions;
+            case "terminal":   return R.drawable.ic_side_terminal;
+            case "robot":      return R.drawable.ic_side_robot;
+            case "database":   return R.drawable.ic_side_database;
+            case "cloud":      return R.drawable.ic_side_cloud;
+            case "settings":   return R.drawable.ic_side_settings;
+            default:           return R.drawable.ic_side_extensions;
+        }
     }
 
     // ============== 搜索 ==============
