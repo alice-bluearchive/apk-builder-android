@@ -1,131 +1,137 @@
-﻿# APK Builder (v2)
+﻿
 
-> 鍦?Android 鎵嬫満涓婄绾挎墦鍖?APK 鐨?IDE銆?
+---
+
+# APK Builder (v3)
+
+> 在 Android 手机上离线打包 APK 的现代 IDE。
 > An offline APK builder IDE that runs entirely on Android.
 
 [![Android](https://img.shields.io/badge/Android-7.0%2B-brightgreen)](https://developer.android.com)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Branch](https://img.shields.io/badge/branch-v2-orange)]()
+[![Branch](https://img.shields.io/badge/branch-v3-purple)]()
 
 ---
 
-## 鈿狅笍 鍏充簬鍒嗘敮 / About branches
+## ⚠️ 关于分支 / About branches
 
-鏈粨搴撴湁涓や釜鍒嗘敮锛?
+本仓库有多个分支：
 
-| 鍒嗘敮 | 鍐呭 | 鍖呭悕 |
+| 分支 | 内容 | 包名 |
 |---|---|---|
-| `main` | v1 鏃ч」鐩紙淇濈暀锛?| `com.example.apkbuilder` |
-| **`v2`** | **褰撳墠寮€鍙戠増锛堟帹鑽愶級** | `com.example.androidstudio` |
+| `main` | v1 老项目（保留） | `com.example.apkbuilder` |
+| `v2` | v2 稳定开发版 | `com.example.androidstudio` |
+| **`v3`** | **当前开发版（推荐）** | `com.example.androidstudio` |
 
-鏈?README 鎻忚堪鐨勬槸 **v2**銆傛棫鐗堣鍒囧埌 `main` 鍒嗘敮銆?
-
----
-
-## 鉁?鍔熻兘 / Features
-
-### 鏋勫缓鑳藉姏
-- **HTML 鈫?APK**锛氬崟鏂囦欢 HTML 鎵撴垚 WebView 澹?
-- **Java 鈫?APK**锛欵CJ 缂栬瘧 + D8 杞?dex + aapt2 鎵撳寘 + 绛惧悕
-- **妯℃澘绯荤粺**锛欵mpty / Empty View锛堝鏍?Android Studio 妯℃澘锛?
-- **瀹屾暣 res/ 鏀寔**锛氱敤鎴烽」鐩噷鐨?`res/`銆乣AndroidManifest.xml` 鐪熷疄鐢熸晥
-- **Release 绛惧悕**锛氬鍏?JKS / PKCS12 keystore 绛?release 鍖?
-- **鍏ㄧ绾?*锛歛apt2 + ECJ + D8 + apksig 鍏ㄩ儴鍐呯疆锛屾棤闇€鑱旂綉
-
-### IDE 鐣岄潰锛坴2 鏂板锛?
-- VSCode 椋庢牸渚ц竟鏍忥細馃搧 鏂囦欢 | 馃攳 鎼滅储 | 鈳?Git | 馃З 鎵╁睍
-- 渚ц竟鏍忓彲鎷栨嫿瀹藉害銆佸彲鏁翠綋鏀惰捣
-- 澶?tab 缂栬緫鍣紙CodeMirror锛屾敮鎸佽娉曢珮浜€佽鍙凤級
-- 鍐呭祵缁堢锛屾瀯寤烘棩蹇楀疄鏃舵粴鍔?
-- 椤圭洰鍏ㄦ枃鏈悳绱紙鏂囦欢鍚?+ 鍐呭锛?
-- 閿欒琛屽彿鐐瑰嚮璺宠浆
-
-### 鎵╁睍绯荤粺锛坴2 鏂板锛?
-- 鎵╁睍 = 鐙珛 zip 鍖咃紙`classes.dex` + `manifest.json`锛?
-- 杩愯鏃跺姞杞斤紝鏃犻渶閲嶆柊缂栬瘧涓?App
-- 鎵╁睍鍙互锛?
-    - 娉ㄥ唽 鈰?鑿滃崟椤?
-    - 娉ㄥ唽渚ц竟鏍忛潰鏉匡紙鎸夐挳鍒楄〃 鎴?鑷畾涔?View锛?
-    - 浣跨敤鑷甫鐨勫浘鏍?PNG
-    - 鎼哄甫绗笁鏂?jar锛堣嚜鍔ㄨ浆鎴?`lib/*.dex`锛?
-- 鍐呯疆 **Git 鎵╁睍**锛堝熀浜?JGit 5.13锛夛細init / status / add / commit / log / branches
-
-### 涓嫳鍙岃
-- 鍏ㄩ儴鐣岄潰涓嫳鍒囨崲
-- 娣辫壊涓婚
+本 README 描述的是 **v3**。旧版请切到对应分支。
 
 ---
 
-## 馃摳 鎴浘 / Screenshots
+## ✨ 功能 / Features
 
-> 寰呰ˉ鍏?
+### 🚀 全新 IDE 体验 (v3 核心)
+- **VSCode 风格布局**：活动栏、可拖拽侧边栏、底部状态栏（显示光标行列、语言、错误数）。
+- **沉浸式全屏编辑器**：独立 `EditorActivity`，彻底释放屏幕空间，专注敲代码。
+- **现代命令面板**：点击顶部标题唤起 Command Palette，支持模糊搜索文件、执行构建/终端/设置等命令。
+- **真·代码折叠**：支持 Java/JS/C++ 的 `{}` 折叠，一键收起长方法。
+- **智能补全**：自动补全括号、引号，并关闭了恼人的智能缩进。
+- **快捷工具栏**：悬浮竖排按钮（撤销/重做/注释/格式化），随手可用。
+
+### 🛠 构建能力
+- **HTML → APK**：单文件 HTML 打成 WebView 壳。
+- **Java → APK**：ECJ 编译 + D8 转 dex + aapt2 打包 + 签名。
+- **Gradle 规范**：新建项目自动生成 `src/main/java|res|assets` 标准结构。
+- **完整 res/ 支持**：用户项目里的 `res/`、`AndroidManifest.xml` 真实生效。
+- **Release 签名**：导入 JKS / PKCS12 keystore 签 release 包。
+- **全离线**：aapt2 + ECJ + D8 + apksig 全部内置，无需联网。
+- **进度条与报错解析**：终端内嵌 ASCII 进度条，构建失败自动提取问题列表，点击即可跳转报错行。
+
+### 🌿 原生 Git 集成 (v3 新增)
+- 基于 JGit 5.13，无需外挂扩展，直接在侧边栏进行版本控制。
+- 支持 `Git Init`、`Status`、`Add`、`Commit`、`Log`。
+- 初始化时自动生成 `.gitignore`，防止把编译产物提交到仓库。
+
+### 🧩 扩展系统 & 本地商店
+- 扩展 = 独立 zip 包（`classes.dex` + `manifest.json`）。
+- **安全私有目录**：扩展解压到 `/data/user/0/.../files/extensions/`，防篡改。
+- **本地商店**：读取 `/sdcard/apk-builder/store/` 下的 zip 包，一键安装/重装/卸载。
+- **Dex 安全校验**：安装时校验 `classes.dex` 魔数，拦截恶意文件。
+
+### 🌍 其它
+- **全界面中英双语**：彻底清除硬编码，支持即时切换。
+- **智能新建项目**：两次弹窗，支持中文应用名 + 自定义英文包名。
 
 ---
 
-## 馃摝 涓嬭浇 / Download
+## 📸 截图 / Screenshots
 
-浠?[Releases](https://github.com/alice-bluearchive/apk-builder-android/releases) 涓嬭浇鏈€鏂扮殑 `app-debug.apk`锛堢害 42 MB锛夈€?
-
-**棣栨鍚姩**闇€瑕佹巿浜堛€屾墍鏈夋枃浠惰闂€嶆潈闄愶紝鐢ㄤ簬璇诲啓 `/storage/emulated/0/apk-project/` 涓嬬殑椤圭洰鐩綍銆?
+看我干什么我没有
 
 ---
 
-## 馃洜 浠庢簮鐮佹瀯寤?/ Build from source
+## 📥 下载 / Download
 
-### 鐜瑕佹眰
-- **JDK 17 鎴?21**锛圝DK 22+ 涓嶅吋瀹?AGP 8.x锛?
-- **Android SDK**锛坄compileSdk 36`锛?
-- **Gradle 8.14+**锛堢敤 wrapper 鑷甫鐨勫嵆鍙級
+从 [Releases](https://github.com/alice-bluearchive/apk-builder-android/releases) 下载最新的 `app-debug.apk`。
 
-### 姝ラ
+**首次启动**需要授予「所有文件访问」权限，用于读写 `/storage/emulated/0/apk-project/` 下的项目目录。
 
-```bash
-git clone -b v2 https://github.com/alice-bluearchive/apk-builder-android.git
+---
+
+## 🛠 从源码构建 / Build from source
+
+### 环境要求
+- **JDK 17 或 21**（JDK 22+ 不兼容 AGP 8.x）
+- **Android SDK**（`compileSdk 34` 或以上）
+- **Gradle 8.14+**（用 wrapper 自带的即可）
+
+### 步骤
+
+git clone -b v3 https://github.com/alice-bluearchive/apk-builder-android.git
 cd apk-builder-android
 
-# 鍦?local.properties 閲屾寚瀹氫綘鐨?SDK 璺緞
+# 在 local.properties 里指定你的 SDK 路径
 echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 
-# 鏋勫缓
+# 构建
 ./gradlew :app:assembleDebug
-```
 
-浜х墿锛歚app/build/outputs/apk/debug/app-debug.apk`
+产物：`app/build/outputs/apk/debug/app-debug.apk`
 
-### 椤圭洰缁撴瀯
-
-```
+### 项目结构
 app/src/main/
-鈹溾攢鈹€ java/com/example/androidstudio/
-鈹?  鈹溾攢鈹€ ApkBuilder.java              鏍稿績鎵撳寘娴佺▼
-鈹?  鈹溾攢鈹€ ProjectBuilder.java          鏋勫缓璋冨害鍣?
-鈹?  鈹溾攢鈹€ EcjCompiler.java             ECJ 鍔ㄦ€佸姞杞?+ 缂栬瘧
-鈹?  鈹溾攢鈹€ D8Wrapper.java               class 鈫?dex
-鈹?  鈹溾攢鈹€ IdeActivity.java             IDE 涓荤晫闈?
-鈹?  鈹溾攢鈹€ ExtensionManager.java        鎵╁睍鍔犺浇 / 鍗歌浇
-鈹?  鈹溾攢鈹€ ExtensionHost.java           鎵╁睍 API
-鈹?  鈹斺攢鈹€ ...
-鈹溾攢鈹€ assets/
-鈹?  鈹溾攢鈹€ template/                    宸ュ叿閾撅紙aapt2 绛夛紝鐢?jniLibs 鎻愪緵锛?
-鈹?  鈹溾攢鈹€ templates/                   鏂板缓椤圭洰妯℃澘
-鈹?  鈹斺攢鈹€ editor/                      CodeMirror
-鈹溾攢鈹€ jniLibs/arm64-v8a/               53 涓?.so锛坅apt2 + 渚濊禆锛?
-鈹斺攢鈹€ res/                             涓?App 璧勬簮
-```
+├── java/com/example/androidstudio/
+│   ├── ApkBuilder.java              核心打包流程
+│   ├── ProjectBuilder.java          构建调度器
+│   ├── EcjCompiler.java             ECJ 动态加载 + 编译
+│   ├── D8Wrapper.java               class → dex
+│   ├── IdeActivity.java             主工作区（文件树/终端）
+│   ├── EditorActivity.java          全屏沉浸式代码编辑器
+│   ├── GitManager.java              原生 JGit 封装
+│   ├── ExtensionManager.java        扩展加载 / 卸载
+│   ├── ExtensionStoreActivity.java  本地扩展商店
+│   └── ...
+├── assets/
+│   ├── template/                    工具链（aapt2 等，由 jniLibs 提供）
+│   ├── templates/                   新建项目模板
+│   └── editor/                      CodeMirror (含折叠/补全插件)
+├── jniLibs/arm64-v8a/               53 个 .so（aapt2 + 依赖）
+└── res/                             主 App 资源（含双语适配）
+---
+
 
 ---
 
-## 馃З 寮€鍙戞墿灞?/ Writing extensions
+## 🧩 开发扩展 / Writing extensions
 
-鎵╁睍鏄竴涓?zip 鍖咃紝鍖呭惈锛?
+扩展是一个 zip 包，包含：
 
 ```
 myext.zip
-鈹溾攢鈹€ manifest.json        鎵╁睍鍏冧俊鎭?
-鈹溾攢鈹€ classes.dex          缂栬瘧鍚庣殑 Java 浠ｇ爜
-鈹溾攢鈹€ icon.png             锛堝彲閫夛級渚ц竟鏍忓浘鏍?
-鈹斺攢鈹€ lib/                 锛堝彲閫夛級绗笁鏂?jar 杞殑 dex
-    鈹斺攢鈹€ classes.dex
+├── manifest.json        扩展元信息
+├── classes.dex          编译后的 Java 代码
+├── icon.png             （可选）侧边栏图标
+└── lib/                 （可选）第三方 jar 转的 dex
+    └── classes.dex
 ```
 
 ### manifest.json
@@ -141,7 +147,7 @@ myext.zip
 }
 ```
 
-### 鍏ュ彛绫?
+### 入口类
 
 ```java
 package com.example.myext;
@@ -165,14 +171,14 @@ public class MyExtension implements IExtension {
         this.host = host;
         host.log("My extension loaded");
 
-        // 鑿滃崟椤?
+        // 菜单项
         host.registerMenuItem("Say hello", this::hello);
 
-        // 渚ц竟鏍忛潰鏉?
+        // 侧边栏面板
         SidebarPanelSpec panel = new SidebarPanelSpec();
         panel.id = "myext-panel";
         panel.title = "My Extension";
-        panel.iconName = "extensions";   // 鍐呯疆鍥炬爣闆?
+        panel.iconName = "extensions";   // 内置图标集
         panel.items = new ArrayList<>();
         panel.items.add(new SidebarPanelItem("Say hello", this::hello));
         host.registerSidebarPanel(panel);
@@ -187,56 +193,30 @@ public class MyExtension implements IExtension {
 }
 ```
 
-### 鍐呯疆鍥炬爣闆?
+### 安装
 
-`files` / `search` / `git` / `extensions` / `terminal`
+1. 将 zip 包放到手机 `/sdcard/apk-builder/store/` 目录下。
+2. 在 App 内进入 扩展 → 商店 → 点击 INSTALL。
 
-### 鑷畾涔?View 闈㈡澘
-
-```java
-panel.viewFactory = ctx -> {
-    LinearLayout v = new LinearLayout(ctx);
-    v.setOrientation(LinearLayout.VERTICAL);
-    // 鏀句换鎰?View
-    return v;
-};
-```
-
-### 瀹夎
-
-1. 鎶?zip 鎷峰埌鎵嬫満 `/sdcard/Download/`
-2. 涓?App 鈫?浠绘剰椤圭洰 鈫?馃З 鈫?绠＄悊鎵╁睍 鈫?瀵煎叆 ZIP
-3. 閫€鍑哄苟閲嶈繘椤圭洰浠ュ姞杞?
-
-璇﹁ [ext-template](https://github.com/alice-bluearchive/apk-builder-android/tree/v2/ext-template)锛堢ず渚嬫墿灞曢鏋讹級銆?
+详见 [ext-template](https://github.com/alice-bluearchive/apk-builder-android/tree/v3/ext-template)（示例扩展骨架）。
 
 ---
 
-## 馃О 宸ュ叿閾?/ Toolchain
+## 🎉 工具链 / Toolchain
 
-鍐呯疆锛坄assets/template/` + `jniLibs/`锛夛細
+内置（`assets/template/` + `jniLibs/`）：
 
-| 缁勪欢 | 鐢ㄩ€?|
+| 组件 | 用途 |
 |---|---|
-| `aapt2` | 璧勬簮缂栬瘧 + 鎵撳寘 |
-| `zipalign` | APK 瀵归綈 |
-| `android.jar` | 缂栬瘧鏈?API 瀛樻牴锛堝帇缂?24 MB锛?|
-| `ecj.dex` + `ecj.jar` | Eclipse Java 缂栬瘧鍣紙DexClassLoader 鍔犺浇锛?|
-| `lambda-patch.jar` | Lambda 琛ㄨ揪寮忔敮鎸?|
-| `apksig` | V1 + V2 绛惧悕 |
-| `D8 (R8 搴?` | class 鈫?dex |
+| `aapt2` | 资源编译 + 打包 |
+| `zipalign` | APK 对齐 |
+| `android.jar` | 编译时 API 存根（压缩 24 MB） |
+| `ecj.dex` + `ecj.jar` | Eclipse Java 编译器（DexClassLoader 加载） |
+| `lambda-patch.jar` | Lambda 表达式支持 |
+| `apksig` | V1 + V2 签名 |
+| `D8 (R8 库)` | class → dex |
+| `JGit` | 原生 Git 版本控制 |
 
 ---
 
-## 馃搫 License
 
-[MIT](LICENSE)
-
----
-
-## 馃檹 鑷磋阿 / Credits
-
-- [Eclipse JDT](https://www.eclipse.org/jdt/) 鈥?ECJ 缂栬瘧鍣?
-- [JGit](https://www.eclipse.org/jgit/) 鈥?Git 瀹炵幇
-- [CodeMirror](https://codemirror.net/) 鈥?缂栬緫鍣ㄥ唴鏍?
-- [Termux](https://termux.dev/) 鈥?aapt2 浜岃繘鍒剁殑鏉ユ簮
