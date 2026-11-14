@@ -25,7 +25,6 @@ import dalvik.system.DexClassLoader;
 
 public class ExtensionManager {
 
-    public static final String EXT_ROOT = "/sdcard/apk-builder/extensions";
     private static final String TAG = "APKBUILDER-EXT";
 
     private static ExtensionManager sInst;
@@ -119,15 +118,20 @@ public class ExtensionManager {
         return generation;
     }
 
+    // ================ 私有目录 ================
+
+    /** 获取扩展的私有根目录 */
+    public File getExtRoot() {
+        File root = new File(ctx.getFilesDir(), "extensions");
+        if (!root.exists()) root.mkdirs();
+        return root;
+    }
+
     // ================ 扫描 ================
 
     private List<ExtensionInfo> scanInstalled() {
         List<ExtensionInfo> out = new ArrayList<>();
-        File root = new File(EXT_ROOT);
-        if (!root.exists()) {
-            root.mkdirs();
-            return out;
-        }
+        File root = getExtRoot();
         File[] kids = root.listFiles();
         if (kids == null) return out;
 
@@ -135,8 +139,14 @@ public class ExtensionManager {
             if (!k.isDirectory()) continue;
             try {
                 ExtensionInfo info = ExtensionInfo.fromManifest(k);
-                if (!new File(k, "classes.dex").exists()) {
+                File dexFile = new File(k, "classes.dex");
+                if (!dexFile.exists()) {
                     log("扩展 " + info.id + " 缺 classes.dex，跳过");
+                    continue;
+                }
+                // 校验 dex 魔数
+                if (!isValidDex(dexFile)) {
+                    log("扩展 " + info.id + " 的 classes.dex 非法，跳过");
                     continue;
                 }
                 out.add(info);
@@ -146,6 +156,16 @@ public class ExtensionManager {
             }
         }
         return out;
+    }
+
+    private boolean isValidDex(File dexFile) {
+        byte[] magic = new byte[4];
+        try (FileInputStream fis = new FileInputStream(dexFile)) {
+            if (fis.read(magic) != 4) return false;
+            return magic[0] == 'd' && magic[1] == 'e' && magic[2] == 'x' && magic[3] == '\n';
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ================ 加载 ================
@@ -238,14 +258,6 @@ public class ExtensionManager {
             if (spec == null || spec.id == null || spec.id.isEmpty()) return;
             spec.extDir = extDir;
             sidebarPanels.add(spec);
-
-            int n = (spec.items == null) ? 0 : spec.items.size();
-            String src = (spec.viewFactory != null) ? "custom-view"
-                    : (n + " items");
-            String icon = (spec.iconFile != null && !spec.iconFile.isEmpty())
-                    ? ("icon=" + spec.iconFile)
-                    : ("iconName=" + spec.iconName);
-            log("注册侧边栏面板: " + spec.id + " (" + src + ", " + icon + ")");
         }
 
         @Override
@@ -283,26 +295,23 @@ public class ExtensionManager {
         }
 
         @Override
-        public void showConfirm(String title, String message,
-                                final Runnable onConfirm) {
+        public void showConfirm(String title, String message, final Runnable onConfirm) {
             post(() -> {
                 Activity a = act();
                 if (a == null || a.isFinishing()) return;
                 new AlertDialog.Builder(a)
                         .setTitle(title)
                         .setMessage(message)
-                        .setPositiveButton(android.R.string.ok,
-                                (d, w) -> {
-                                    if (onConfirm != null) onConfirm.run();
-                                })
+                        .setPositiveButton(android.R.string.ok, (d, w) -> {
+                            if (onConfirm != null) onConfirm.run();
+                        })
                         .setNegativeButton(android.R.string.cancel, null)
                         .show();
             });
         }
 
         @Override
-        public void showInput(String title, String hint, String defaultValue,
-                              final OnInput onOk) {
+        public void showInput(String title, String hint, String defaultValue, final OnInput onOk) {
             post(() -> {
                 Activity a = act();
                 if (a == null || a.isFinishing()) return;
@@ -316,19 +325,16 @@ public class ExtensionManager {
                 new AlertDialog.Builder(a)
                         .setTitle(title)
                         .setView(et)
-                        .setPositiveButton(android.R.string.ok,
-                                (d, w) -> {
-                                    if (onOk != null)
-                                        onOk.onInput(et.getText().toString());
-                                })
+                        .setPositiveButton(android.R.string.ok, (d, w) -> {
+                            if (onOk != null) onOk.onInput(et.getText().toString());
+                        })
                         .setNegativeButton(android.R.string.cancel, null)
                         .show();
             });
         }
 
         @Override
-        public void showList(String title, final List<String> items,
-                             final OnListItem onItem) {
+        public void showList(String title, final List<String> items, final OnListItem onItem) {
             post(() -> {
                 Activity a = act();
                 if (a == null || a.isFinishing()) return;
@@ -336,8 +342,7 @@ public class ExtensionManager {
                 new AlertDialog.Builder(a)
                         .setTitle(title)
                         .setItems(arr, (d, which) -> {
-                            if (onItem != null)
-                                onItem.onItem(which, arr[which]);
+                            if (onItem != null) onItem.onItem(which, arr[which]);
                         })
                         .setNegativeButton(android.R.string.cancel, null)
                         .show();
@@ -355,20 +360,23 @@ public class ExtensionManager {
     public void importZip(final File zipFile, final ImportCallback cb) {
         new Thread(() -> {
             try {
-                File tmpDir = new File(ctx.getCacheDir(),
-                        "ext_import_" + System.currentTimeMillis());
+                File tmpDir = new File(ctx.getCacheDir(), "ext_import_" + System.currentTimeMillis());
                 deleteRec(tmpDir);
                 tmpDir.mkdirs();
 
+                // 1. 解压（内部包含 Zip Slip 防护）
                 unzip(zipFile, tmpDir);
 
+                // 2. 校验 Manifest
                 ExtensionInfo info = ExtensionInfo.fromManifest(tmpDir);
-                if (!new File(tmpDir, "classes.dex").exists()) {
-                    throw new IOException("zip 里没有 classes.dex");
-                }
 
-                File root = new File(EXT_ROOT);
-                if (!root.exists()) root.mkdirs();
+                // 3. 校验 dex 存在且合法
+                File dexFile = new File(tmpDir, "classes.dex");
+                if (!dexFile.exists()) throw new IOException("zip 里没有 classes.dex");
+                if (!isValidDex(dexFile)) throw new IOException("classes.dex 文件损坏或格式非法");
+
+                // 4. 移动到私有目录
+                File root = getExtRoot();
                 File dst = new File(root, info.id);
                 if (dst.exists()) deleteRec(dst);
                 if (!tmpDir.renameTo(dst)) {
@@ -383,10 +391,8 @@ public class ExtensionManager {
                 });
             } catch (Exception e) {
                 e.printStackTrace();
-                final String msg = e.getMessage() == null
-                        ? e.getClass().getSimpleName() : e.getMessage();
-                new Handler(Looper.getMainLooper()).post(
-                        () -> cb.onError(msg));
+                final String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                new Handler(Looper.getMainLooper()).post(() -> cb.onError(msg));
             }
         }, "ext-import").start();
     }
@@ -397,9 +403,9 @@ public class ExtensionManager {
             byte[] buf = new byte[8192];
             while ((entry = zis.getNextEntry()) != null) {
                 File target = new File(outDir, entry.getName());
-                if (!target.getCanonicalPath().startsWith(
-                        outDir.getCanonicalPath())) {
-                    throw new IOException("非法路径: " + entry.getName());
+                // 防护：Zip Slip 路径穿越
+                if (!target.getCanonicalPath().startsWith(outDir.getCanonicalPath() + File.separator)) {
+                    throw new IOException("非法路径 (Zip Slip): " + entry.getName());
                 }
                 if (entry.isDirectory()) {
                     target.mkdirs();

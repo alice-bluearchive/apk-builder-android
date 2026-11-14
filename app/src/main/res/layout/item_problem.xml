@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- 阶段图标或文字 -->
+    <TextView
+        android:id="@+id/tvProblemStage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="[ECJ]"
+        android:textColor="#E57373"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:layout_marginEnd="8dp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvProblemFile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="MainActivity.java:42"
+            android:textColor="#4EC9B0"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvProblemDesc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="cannot find symbol"
+            android:textColor="#CCCCCC"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+</LinearLayout>

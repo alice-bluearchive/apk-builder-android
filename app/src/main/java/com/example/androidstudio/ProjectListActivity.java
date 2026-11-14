@@ -10,8 +10,8 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,8 +23,6 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.button.MaterialButton;
-
 import java.util.List;
 
 public class ProjectListActivity extends AppCompatActivity {
@@ -32,14 +30,15 @@ public class ProjectListActivity extends AppCompatActivity {
     private RecyclerView listProjects;
     private LinearLayout emptyState;
     private TextView tvBasePath;
-    private MaterialButton btnNewProject;
-    private Button btnLang;
+    private ImageButton btnNewProject;
+    private TextView btnLang;
     private ProjectAdapter adapter;
     private List<String> projects;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LocaleHelper.apply(this, LocaleHelper.current(this));
         setContentView(R.layout.activity_project_list);
 
         AppContext.init(getApplicationContext());
@@ -51,9 +50,12 @@ public class ProjectListActivity extends AppCompatActivity {
         btnLang = findViewById(R.id.btnLang);
 
         listProjects.setLayoutManager(new LinearLayoutManager(this));
-        tvBasePath.setText(ProjectStore.base().getAbsolutePath());
+        tvBasePath.setText(getString(R.string.workspace_hint, ProjectStore.base().getAbsolutePath()));
 
-        btnLang.setOnClickListener(v -> LocaleHelper.toggle(this));
+        btnLang.setOnClickListener(v -> {
+            LocaleHelper.toggle(this);
+            recreate(); // 切换语言后重建界面刷新
+        });
 
         btnNewProject.setOnClickListener(v -> promptMode());
 
@@ -160,34 +162,67 @@ public class ProjectListActivity extends AppCompatActivity {
     }
 
     private void promptProjectName(final String mode) {
-        EditText et = new EditText(this);
-        et.setHint(R.string.new_project_hint);
-        et.setInputType(InputType.TYPE_CLASS_TEXT);
-        et.setAutofillHints("");
-        et.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        // 第一次：询问应用名称（支持中文）
+        EditText etAppName = new EditText(this);
+        etAppName.setHint("例如：我的牛逼应用");
+        LinearLayout c1 = new LinearLayout(this);
+        c1.setPadding(48, 24, 48, 0);
+        c1.addView(etAppName);
 
         new AlertDialog.Builder(this)
-                .setTitle(getString(R.string.btn_new_project) + " · " + mode)
-                .setView(et)
-                .setPositiveButton(R.string.btn_open_project, (d, w) -> {
-                    String name = et.getText().toString().trim();
-                    if (name.isEmpty() || !name.matches("[A-Za-z0-9_\\-]+")) {
-                        toast(getString(R.string.invalid_name));
+                .setTitle("第一步：输入应用名称")
+                .setView(c1)
+                .setCancelable(false)
+                .setPositiveButton("下一步", (d, w) -> {
+                    String appName = etAppName.getText().toString().trim();
+                    if (appName.isEmpty()) {
+                        toast("应用名称不能为空");
                         return;
                     }
-                    if (ProjectStore.exists(name)) {
-                        toast(getString(R.string.project_exists));
+                    // 进入第二次弹窗
+                    promptPackageName(mode, appName);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void promptPackageName(final String mode, final String appName) {
+        // 第二次：询问包名（必须是英文）
+        EditText etPkg = new EditText(this);
+        // 默认生成一个随机包名，防止重复
+        String defaultPkg = "com.example.app" + (System.currentTimeMillis() % 10000);
+        etPkg.setText(defaultPkg);
+        LinearLayout c2 = new LinearLayout(this);
+        c2.setPadding(48, 24, 48, 0);
+        c2.addView(etPkg);
+
+        new AlertDialog.Builder(this)
+                .setTitle("第二步：输入包名 (仅英文和点)")
+                .setView(c2)
+                .setCancelable(false)
+                .setPositiveButton("创建项目", (d, w) -> {
+                    String pkg = etPkg.getText().toString().trim();
+                    if (pkg.isEmpty() || !pkg.matches("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")) {
+                        toast("包名不合法，例如：com.example.myapp");
                         return;
                     }
+
+                    // 用包名的最后一段作为文件夹名
+                    String folderName = pkg.substring(pkg.lastIndexOf(".") + 1);
+                    if (ProjectStore.exists(folderName)) {
+                        toast("项目文件夹已存在，请换一个包名");
+                        return;
+                    }
+
                     try {
-                        ProjectStore.create(name, mode);
-                        toast(getString(R.string.project_created, name));
-                        openProject(name);
+                        ProjectStore.create(folderName, mode, appName, pkg);
+                        toast("已创建项目: " + appName);
+                        openProject(folderName);
                     } catch (Exception e) {
-                        toast("Failed: " + e.getMessage());
+                        toast("失败: " + e.getMessage());
                     }
                 })
-                .setNegativeButton(R.string.btn_cancel, null)
+                .setNegativeButton("上一步", null)
                 .show();
     }
 

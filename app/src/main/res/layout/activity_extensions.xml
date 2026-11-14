@@ -23,6 +23,16 @@
             android:scaleType="centerInside" />
 
         <TextView
+            android:id="@+id/btnStore"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Store"
+            android:textColor="#4EC9B0"
+            android:textStyle="bold"
+            android:padding="12dp"
+            android:layout_marginStart="8dp"/>
+
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"

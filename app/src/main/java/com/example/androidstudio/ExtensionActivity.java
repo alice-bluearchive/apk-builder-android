@@ -52,7 +52,13 @@ public class ExtensionActivity extends AppCompatActivity {
         });
 
         listExt.setLayoutManager(new LinearLayoutManager(this));
-        tvRootPath.setText(ExtensionManager.EXT_ROOT);
+        // 使用私有目录
+        tvRootPath.setText("Private Dir: " + ExtensionManager.get(this).getExtRoot().getAbsolutePath());
+
+        // 商店按钮
+        findViewById(R.id.btnStore).setOnClickListener(v -> {
+            startActivity(new Intent(ExtensionActivity.this, ExtensionStoreActivity.class));
+        });
 
         refreshList();
     }

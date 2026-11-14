@@ -4,9 +4,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.TextView;
-
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -46,19 +44,32 @@ public class ProjectAdapter extends RecyclerView.Adapter<ProjectAdapter.VH> {
         h.tvName.setText(name);
 
         ProjectConfig cfg = ProjectStore.loadConfig(name);
-        String mode = "Java".equals(cfg.mode) ? "Java" : "HTML";
-        String typeLabel = "Java".equals(mode) ? "Java" : "HTML";
+        String mode = cfg.mode == null ? "HTML" : cfg.mode;
+
+        // 修复：判断具体的 Java 模式
+        String modeLabel;
+        String icon;
+        if (mode.contains("JAVA_EMPTY_VIEW")) {
+            modeLabel = "Java · Empty View";
+            icon = "☕";
+        } else if (mode.contains("JAVA_EMPTY")) {
+            modeLabel = "Java · Empty";
+            icon = "☕";
+        } else if (mode.contains("HTML")) {
+            modeLabel = "HTML";
+            icon = "🌐";
+        } else {
+            modeLabel = mode;
+            icon = "📄";
+        }
+
+        h.ivType.setText(icon);
 
         File dir = ProjectStore.dir(name);
         long ts = dir.lastModified();
         String time = dateFmt.format(new Date(ts));
 
-        h.tvMeta.setText(typeLabel + " · " + time);
-        if ("Java".equals(mode)) {
-            h.ivType.setImageResource(android.R.drawable.ic_menu_edit);
-        } else {
-            h.ivType.setImageResource(android.R.drawable.ic_menu_view);
-        }
+        h.tvMeta.setText(modeLabel + " · " + time);
 
         h.itemView.setOnClickListener(v -> cb.onClick(name));
         h.btnDelete.setOnClickListener(v -> cb.onDelete(name));
@@ -70,9 +81,9 @@ public class ProjectAdapter extends RecyclerView.Adapter<ProjectAdapter.VH> {
     }
 
     static class VH extends RecyclerView.ViewHolder {
-        TextView tvName, tvMeta;
-        ImageView ivType;
+        TextView tvName, tvMeta, ivType;
         ImageButton btnDelete;
+
         VH(@NonNull View v) {
             super(v);
             tvName = v.findViewById(R.id.tvName);

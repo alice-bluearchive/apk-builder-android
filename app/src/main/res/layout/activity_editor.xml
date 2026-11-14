@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1E1E1E">
+
+    <!-- 极简顶栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="#252526"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="4dp">
+
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#CCCCCC" />
+
+        <TextView
+            android:id="@+id/tvFileName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:textColor="#CCCCCC"
+            android:textSize="14sp"
+            android:singleLine="true"
+            android:ellipsize="middle"
+            android:text="File.java" />
+
+        <TextView
+            android:id="@+id/tvDirty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textColor="#FFB300"
+            android:textSize="20sp"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/btnSave"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_save"
+            app:tint="#3DDC84" />
+    </LinearLayout>
+
+    <!-- 编辑器主体 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/webEditor"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#1E1E1E" />
+
+        <!-- 悬浮快捷按钮：为了不挡代码，做成半透明并贴底 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:orientation="horizontal"
+            android:background="#E6252526"
+            android:padding="4dp"
+            android:elevation="4dp">
+
+            <ImageButton
+                android:id="@+id/btnUndo"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_revert"
+                app:tint="#CCCCCC" />
+            <ImageButton
+                android:id="@+id/btnRedo"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_rotate"
+                app:tint="#CCCCCC" />
+            <ImageButton
+                android:id="@+id/btnFormat"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_sort_alphabetically"
+                app:tint="#CCCCCC" />
+            <ImageButton
+                android:id="@+id/btnComment"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_agenda"
+                app:tint="#CCCCCC" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 极简底部状态栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="24dp"
+        android:background="#007ACC"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="8dp">
+        <TextView
+            android:id="@+id/tvCursor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ln 1, Col 1"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+        <TextView
+            android:id="@+id/tvLang"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Java"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

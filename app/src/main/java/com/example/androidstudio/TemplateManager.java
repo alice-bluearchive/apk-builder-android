@@ -13,20 +13,6 @@ public class TemplateManager {
     public static final String TYPE_JAVA_EMPTY = "JAVA_EMPTY";
     public static final String TYPE_JAVA_EMPTY_VIEW = "JAVA_EMPTY_VIEW";
 
-    // {assets 源文件, 项目内目标相对路径}
-    private static final String[][] EMPTY_VIEW_FILES = {
-            {"AndroidManifest.xml", "AndroidManifest.xml"},
-            {"MainActivity.java",   "src/MainActivity.java"},
-            {"activity_main.xml",   "res/layout/activity_main.xml"},
-            {"strings.xml",         "res/values/strings.xml"},
-            {"themes.xml",          "res/values/themes.xml"},
-    };
-
-    private static final String[][] EMPTY_FILES = {
-            {"AndroidManifest.xml", "AndroidManifest.xml"},
-            {"MainActivity.java",   "src/MainActivity.java"},
-    };
-
     private final Context ctx;
 
     public TemplateManager(Context ctx) {
@@ -36,14 +22,27 @@ public class TemplateManager {
     public void apply(String type, File projectDir, String pkg, String appName) throws IOException {
         String assetBase;
         String[][] files;
+
+        // 包名转路径 (com.example.app -> com/example/app)
+        String pkgPath = pkg.replace('.', '/');
+
         if (TYPE_JAVA_EMPTY_VIEW.equals(type)) {
             assetBase = "templates/empty_view/";
-            files = EMPTY_VIEW_FILES;
+            files = new String[][]{
+                    {"AndroidManifest.xml", "src/main/AndroidManifest.xml"},
+                    {"MainActivity.java",   "src/main/java/" + pkgPath + "/MainActivity.java"},
+                    {"activity_main.xml",   "src/main/res/layout/activity_main.xml"},
+                    {"strings.xml",         "src/main/res/values/strings.xml"},
+                    {"themes.xml",          "src/main/res/values/themes.xml"}
+            };
         } else if (TYPE_JAVA_EMPTY.equals(type)) {
             assetBase = "templates/empty/";
-            files = EMPTY_FILES;
+            files = new String[][]{
+                    {"AndroidManifest.xml", "src/main/AndroidManifest.xml"},
+                    {"MainActivity.java",   "src/main/java/" + pkgPath + "/MainActivity.java"}
+            };
         } else {
-            return; // HTML 模式走老流程
+            return; // HTML 模式走 ProjectStore 里的逻辑
         }
 
         for (String[] pair : files) {
@@ -69,6 +68,7 @@ public class TemplateManager {
             throw new IOException("模板文件缺失: " + assetPath, e);
         }
 
+        // 替换变量
         text = text.replace("${PACKAGE}", pkg)
                 .replace("${APP_NAME}", appName)
                 .replace("${APP_NAME_RES}", escapeXml(appName));

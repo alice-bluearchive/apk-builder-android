@@ -5,24 +5,35 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
     <title>Editor</title>
     <link rel="stylesheet" href="lib/codemirror.css">
+    <!-- 引入折叠样式 -->
+    <link rel="stylesheet" href="addon/fold/foldgutter.css">
+    <script src="addon/edit/closebrackets.js"></script>
     <style>
         html, body {
             margin: 0; padding: 0; height: 100%;
             background: #1e1e1e; color: #d4d4d4;
-            font-family: monospace;
-            overflow: hidden;
+            font-family: monospace; overflow: hidden;
         }
         .CodeMirror {
-            height: 100%;
-            font-size: 13px;
+            height: 100%; font-size: 14px;
             font-family: 'Consolas', 'Menlo', monospace;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: #1e1e1e; color: #d4d4d4;
         }
         .CodeMirror-gutters { background: #252526; border-right: 1px solid #333; }
         .CodeMirror-linenumber { color: #858585; }
         .CodeMirror-cursor { border-left: 2px solid #ffb300; }
         .CodeMirror-selected { background: #264f78 !important; }
+        .CodeMirror-activeline-background { background: #2a2a2a !important; }
+
+        /* 折叠图标细节 */
+        .CodeMirror-foldmarker {
+            color: #4EC9B0; text-shadow: none; font-family: arial; line-height: .3; cursor: pointer;
+        }
+        .CodeMirror-foldgutter { width: .7em; }
+        .CodeMirror-foldgutter-open, .CodeMirror-foldgutter-folded { cursor: pointer; }
+        .CodeMirror-foldgutter-open:after { content: "\25BE"; color: #858585; }
+        .CodeMirror-foldgutter-folded:after { content: "\25B8"; color: #4EC9B0; }
+
         .cm-keyword { color: #569cd6; }
         .cm-string { color: #ce9178; }
         .cm-comment { color: #6a9955; }
@@ -42,24 +53,46 @@
 <script src="mode/css/css.js"></script>
 <script src="mode/htmlmixed/htmlmixed.js"></script>
 <script src="mode/clike/clike.js"></script>
+
+<!-- 引入折叠插件 -->
+<script src="addon/fold/foldcode.js"></script>
+<script src="addon/fold/foldgutter.js"></script>
+<script src="addon/fold/brace-fold.js"></script>
+<script src="addon/fold/comment-fold.js"></script>
+
 <script>
     var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
         lineNumbers: true,
         indentUnit: 4,
         tabSize: 4,
-        indentWithTabs: false,
-        lineWrapping: true,
+        lineWrapping: false, // <--- 改这里，变成 false
         matchBrackets: true,
-        autoCloseBrackets: false,
+        styleActiveLine: true,
+        foldGutter: true,
+        gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+        smartIndent: false,
+        autoCloseBrackets: true,
         theme: "default"
     });
-    editor.getWrapperElement().style.display = 'none';
-    var docs = {};        // path -> CodeMirror.Doc
-    var current = null;   // 当前 path
+
     var suppressChange = false;
 
+    window.openFile = function(path, content, mode) {
+        suppressChange = true; // 锁定
+        current = path;
+        editor.setOption("mode", mode || "text/plain");
+        editor.setValue(content || "");
+        editor.clearHistory();
+        suppressChange = false; // 解锁
+
+        setTimeout(function() {
+            editor.refresh();
+            editor.focus();
+        }, 30);
+    };
+
     editor.on("change", function() {
-        if (suppressChange) return;
+        if (suppressChange) return; // 如果在锁定期，忽略
         if (!current) return;
         try {
             if (window.AndroidBridge && window.AndroidBridge.onDocChanged) {
@@ -67,79 +100,107 @@
             }
         } catch (e) {}
     });
-    window.openFile = function(path, content, mode) {
-        editor.getWrapperElement().style.display = '';
-        if (docs[path]) {
-            switchTo(path);
-            return;
-        }
-        var doc = new CodeMirror.Doc(content || "", mode || "text/plain");
-        docs[path] = doc;
-        suppressChange = true;
-        editor.swapDoc(doc);
-        suppressChange = false;
-        current = path;
-        editor.focus();
-        setTimeout(function() { editor.refresh(); }, 30);
-    };
+    var current = null;
 
-    window.switchTo = function(path) {
-        if (!docs[path]) return;
-        suppressChange = true;
-        editor.swapDoc(docs[path]);
-        suppressChange = false;
-        current = path;
-        editor.focus();
-        setTimeout(function() { editor.refresh(); }, 30);
-    };
-
-    window.closeFile = function(path) {
-        delete docs[path];
-        if (current === path) {
-            current = null;
-        }
-    };
-
-    window.getContent = function(path) {
-        if (!docs[path]) return "";
-        return docs[path].getValue();
-    };
-
-    window.markClean = function(path) {
-        // 保留接口，暂不用
-    };
-
-    setTimeout(function() {
-        if (window.AndroidBridge && window.AndroidBridge.onReady) {
-            window.AndroidBridge.onReady();
-        }
-    }, 100);
-        // 修复：触摸编辑器区域时主动 focus，避免"必须长按才能输入"
-    document.addEventListener('touchstart', function(e) {
-        if (!editor) return;
-        var wrapper = editor.getWrapperElement();
-        if (!wrapper) return;
-        var rect = wrapper.getBoundingClientRect();
-        if (!e.touches || e.touches.length === 0) return;
-        var x = e.touches[0].clientX;
-        var y = e.touches[0].clientY;
-        if (x >= rect.left && x <= rect.right &&
-            y >= rect.top && y <= rect.bottom) {
-            editor.focus();
-        }
-    }, {passive: true, capture: true});
-        window.gotoLine = function(line) {
+    editor.on("cursorActivity", function(cm) {
         if (!current) return;
+        var pos = cm.getCursor();
+        try {
+            if (window.AndroidBridge && window.AndroidBridge.onCursorChange) {
+                window.AndroidBridge.onCursorChange(pos.line + 1, pos.ch + 1);
+            }
+        } catch (e) {}
+    });
+
+    editor.on("change", function() {
+        if (!current) return;
+        try {
+            if (window.AndroidBridge && window.AndroidBridge.onDocChanged) {
+                window.AndroidBridge.onDocChanged(current);
+            }
+        } catch (e) {}
+    });
+
+    window.openFile = function(path, content, mode) {
+        current = path;
+        editor.setOption("mode", mode || "text/plain");
+        editor.setValue(content || "");
+        editor.clearHistory();
+        setTimeout(function() {
+            editor.refresh();
+            editor.focus();
+        }, 30);
+    };
+
+    window.getContent = function() {
+        return editor.getValue();
+    };
+
+    window.gotoLine = function(line) {
         var lineNum = Math.max(0, (line || 1) - 1);
-        var info = editor.lineInfo(lineNum);
         editor.setCursor({line: lineNum, ch: 0});
         editor.scrollIntoView({line: lineNum, ch: 0}, 300);
         editor.focus();
-        // 简单高亮：闪一下那行
         editor.addLineClass(lineNum, "background", "cm-error-line");
         setTimeout(function() {
             editor.removeLineClass(lineNum, "background", "cm-error-line");
         }, 2000);
+    };
+
+    window.toggleComment = function() {
+        var cm = editor;
+        var ranges = cm.listSelections();
+        cm.operation(function() {
+            for (var i = 0; i < ranges.length; i++) {
+                var range = ranges[i];
+                var start = range.from().line;
+                var end = range.to().line;
+                var minindent = null;
+                var isCommented = true;
+
+                for (var line = start; line <= end; line++) {
+                    var text = cm.getLine(line);
+                    if (text.trim().length === 0) continue;
+                    var match = text.match(/^(\s*)/);
+                    var indent = match[1].length;
+                    if (minindent === null || indent < minindent) minindent = indent;
+                    if (text.trim().indexOf("//") !== 0) isCommented = false;
+                }
+
+                for (var line = start; line <= end; line++) {
+                    var text = cm.getLine(line);
+                    if (text.trim().length === 0) continue;
+                    if (isCommented) {
+                        var pos = text.indexOf("//");
+                        if (pos !== -1) {
+                            var newText = text.substring(0, pos) + text.substring(pos + 2);
+                            cm.replaceRange(newText, {line: line, ch: 0}, {line: line, ch: text.length});
+                        }
+                    } else {
+                        var newText = text.substring(0, minindent) + "// " + text.substring(minindent);
+                        cm.replaceRange(newText, {line: line, ch: 0}, {line: line, ch: text.length});
+                    }
+                }
+            }
+        });
+    };
+
+    window.formatCode = function() {
+        var cm = editor;
+        var totalLines = cm.lineCount();
+        var indent = 0;
+        cm.operation(function() {
+            for (var i = 0; i < totalLines; i++) {
+                var text = cm.getLine(i).trim();
+                if (text.length === 0) continue;
+                if (text.match(/^\}/)) indent = Math.max(0, indent - 1);
+                var newText = "";
+                for (var j = 0; j < indent; j++) newText += "    ";
+                newText += text;
+                cm.replaceRange(newText, {line: i, ch: 0}, {line: i, ch: cm.getLine(i).length});
+                if (text.match(/\{$/)) indent++;
+            }
+        });
     };
 </script>
 </body>

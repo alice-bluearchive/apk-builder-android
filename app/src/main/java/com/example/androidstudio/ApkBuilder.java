@@ -6,6 +6,9 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 
 import com.android.apksig.ApkSigner;
+import com.example.androidstudio.build.BuildStage;
+import com.example.androidstudio.build.ProgressReporter;
+import com.example.androidstudio.build.ProjectLayout;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -21,7 +24,6 @@ import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
@@ -30,8 +32,6 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 public class ApkBuilder {
-
-    private static final String TEMPLATE_ACTIVITY = "com.example.myapplication.MainActivity";
 
     private static final String KS_FILE = "keystore/debug.p12";
     private static final String KS_TYPE = "PKCS12";
@@ -52,79 +52,20 @@ public class ApkBuilder {
         this.logger = (logger == null) ? msg -> {} : logger;
     }
 
-    // ============ HTML 模式 ============
-    public File build(File htmlFile, String pkg, String appName,
-                      File iconFile, List<String> permissions,
-                      SigningConfig signingConfig) throws Exception {
-        if (htmlFile == null || !htmlFile.exists()) throw new IOException("源文件不存在");
-        if (appName == null || appName.isEmpty()) appName = "My App";
-        if (permissions == null) permissions = new ArrayList<>();
-        if (pkg == null || pkg.isEmpty()) throw new IOException("包名不能为空");
-
-        if (tm.getTool("aapt2") == null) throw new IOException("aapt2 不可用");
-        if (tm.getTool("zipalign") == null) throw new IOException("zipalign 不可用");
-
-        File workDir = new File(ctx.getCacheDir(), "build_" + System.currentTimeMillis());
-        deleteRec(workDir);
-        if (!workDir.mkdirs()) throw new IOException("无法创建工作目录");
-        log("工作目录: " + workDir.getAbsolutePath());
-
-        File manifestFile = prepareResAndManifest(workDir, appName, pkg, iconFile,
-                permissions, TEMPLATE_ACTIVITY);
-
-        File assetsDir = new File(workDir, "assets");
-        assetsDir.mkdirs();
-        copyFile(htmlFile, new File(assetsDir, "index.html"));
-
-        File dex1 = new File(workDir, "classes.dex");
-        File dex2 = new File(workDir, "classes2.dex");
-        copyAsset("template/classes.dex", dex1);
-        copyAsset("template/classes2.dex", dex2);
-
-        return assembleApk(workDir, manifestFile, assetsDir,
-                new File[]{dex1, dex2}, appName, signingConfig);
-    }
-
-    // ============ Java 模式（旧：自动生成 manifest + res）============
-    public File buildJava(File userDex, String pkg, String appName,
-                          File iconFile, List<String> permissions,
-                          SigningConfig signingConfig) throws Exception {
-        if (userDex == null || !userDex.exists()) throw new IOException("dex 文件不存在");
-        if (appName == null || appName.isEmpty()) appName = "My App";
-        if (permissions == null) permissions = new ArrayList<>();
-        if (pkg == null || pkg.isEmpty()) throw new IOException("包名不能为空");
-
-        if (tm.getTool("aapt2") == null) throw new IOException("aapt2 不可用");
-        if (tm.getTool("zipalign") == null) throw new IOException("zipalign 不可用");
-
-        File workDir = new File(ctx.getCacheDir(), "build_java_" + System.currentTimeMillis());
-        deleteRec(workDir);
-        if (!workDir.mkdirs()) throw new IOException("无法创建工作目录");
-        log("工作目录: " + workDir.getAbsolutePath());
-
-        String activityClass = pkg + ".MainActivity";
-        File manifestFile = prepareResAndManifest(workDir, appName, pkg, iconFile,
-                permissions, activityClass);
-
-        File assetsDir = new File(workDir, "assets");
-        assetsDir.mkdirs();
-
-        File dex1 = new File(workDir, "classes.dex");
-        copyFile(userDex, dex1);
-
-        return assembleApk(workDir, manifestFile, assetsDir,
-                new File[]{dex1}, appName, signingConfig);
-    }
-
     // ============ 预生成 R.java ============
-    public void generateRJava(File projDir, File rJavaOutDir) throws Exception {
-        File projectRes = new File(projDir, "res");
-        if (!projectRes.isDirectory()) {
+    public void generateRJava(File projDir, File rJavaOutDir, String pkg) throws Exception {
+        ProjectLayout layout = ProjectLayout.detect(projDir);
+        File projectRes = layout.isValid() ? layout.resDir : new File(projDir, "src/main/res");
+        if (!projectRes.exists()) projectRes = new File(projDir, "res");
+
+        if (projectRes == null || !projectRes.isDirectory()) {
             log("项目无 res/，跳过 R.java 生成");
             return;
         }
-        File manifest = new File(projDir, "AndroidManifest.xml");
-        if (!manifest.exists()) throw new IOException("项目缺 AndroidManifest.xml");
+
+        File manifest = layout.isValid() ? layout.manifest : new File(projDir, "src/main/AndroidManifest.xml");
+        if (!manifest.exists()) manifest = new File(projDir, "AndroidManifest.xml");
+        if (manifest == null || !manifest.exists()) throw new IOException("项目缺 AndroidManifest.xml");
 
         if (tm.getTool("aapt2") == null) throw new IOException("aapt2 不可用");
 
@@ -146,18 +87,23 @@ public class ApkBuilder {
 
         log("=== aapt2 compile（生成 R.java 前） ===");
         File compiledRes = new File(workDir, "compiled_res.zip");
-        runTool("aapt2", "compile", "--dir", resCopy.getAbsolutePath(),
-                "-o", compiledRes.getAbsolutePath());
+        runTool("aapt2", "compile", "--dir", resCopy.getAbsolutePath(), "-o", compiledRes.getAbsolutePath());
 
         log("=== aapt2 link --java ===");
         if (!rJavaOutDir.exists()) rJavaOutDir.mkdirs();
-        File androidJar = prepareAndroidJar();
+
+        File androidJar = new File(ctx.getCacheDir(), "android_build.jar");
+        if (!androidJar.exists()) throw new IOException("android.jar 缺失");
+
         File dummyApk = new File(workDir, "dummy.apk");
+
+        // 强制指定包名生成 R.java
         runTool("aapt2", "link",
                 "-o", dummyApk.getAbsolutePath(),
                 "-I", androidJar.getAbsolutePath(),
                 "--manifest", manifest.getAbsolutePath(),
                 "--java", rJavaOutDir.getAbsolutePath(),
+                "--custom-package", pkg,
                 "--min-sdk-version", "24",
                 "--target-sdk-version", "34",
                 compiledRes.getAbsolutePath());
@@ -165,42 +111,84 @@ public class ApkBuilder {
         log("R.java 输出目录: " + rJavaOutDir.getAbsolutePath());
     }
 
+    // ============ HTML 模式 ============
+    public File build(File htmlFile, String pkg, String appName,
+                      File iconFile, List<String> permissions,
+                      SigningConfig signingConfig) throws Exception {
+        return build(htmlFile, pkg, appName, iconFile, permissions, signingConfig, null);
+    }
+
+    public File build(File htmlFile, String pkg, String appName,
+                      File iconFile, List<String> permissions,
+                      SigningConfig signingConfig, ProgressReporter reporter) throws Exception {
+        if (htmlFile == null || !htmlFile.exists()) throw new IOException("源文件不存在");
+        if (appName == null || appName.isEmpty()) appName = "My App";
+        if (permissions == null) permissions = new ArrayList<>();
+        if (pkg == null || pkg.isEmpty()) throw new IOException("包名不能为空");
+
+        if (tm.getTool("aapt2") == null) throw new IOException("aapt2 不可用");
+        if (tm.getTool("zipalign") == null) throw new IOException("zipalign 不可用");
+
+        File workDir = new File(ctx.getCacheDir(), "build_html_" + System.currentTimeMillis());
+        deleteRec(workDir);
+        if (!workDir.mkdirs()) throw new IOException("无法创建工作目录");
+
+        File manifestFile = prepareResAndManifest(workDir, appName, pkg, iconFile,
+                permissions, "com.example.MainActivity");
+
+        File assetsDir = new File(workDir, "assets");
+        assetsDir.mkdirs();
+        copyFile(htmlFile, new File(assetsDir, "index.html"));
+
+        File dex1 = new File(workDir, "classes.dex");
+        File dex2 = new File(workDir, "classes2.dex");
+        copyAsset("template/classes.dex", dex1);
+        copyAsset("template/classes2.dex", dex2);
+
+        return assembleApk(workDir, manifestFile, assetsDir,
+                new File[]{dex1, dex2}, appName, signingConfig, reporter);
+    }
+
     // ============ Java 项目模式 ============
     public File buildJavaProject(File projDir, File[] dexFiles, File iconFile,
                                  String appNameFallback,
                                  SigningConfig signingConfig) throws Exception {
-        File manifest = new File(projDir, "AndroidManifest.xml");
+        return buildJavaProject(projDir, dexFiles, iconFile, appNameFallback, signingConfig, null);
+    }
+
+    public File buildJavaProject(File projDir, File[] dexFiles, File iconFile,
+                                 String appNameFallback,
+                                 SigningConfig signingConfig,
+                                 ProgressReporter reporter) throws Exception {
+        File manifest = new File(projDir, "src/main/AndroidManifest.xml");
+        if (!manifest.exists()) manifest = new File(projDir, "AndroidManifest.xml");
         if (!manifest.exists()) throw new IOException("项目缺 AndroidManifest.xml");
+
         if (dexFiles == null || dexFiles.length == 0) throw new IOException("dex 文件为空");
 
         if (tm.getTool("aapt2") == null) throw new IOException("aapt2 不可用");
         if (tm.getTool("zipalign") == null) throw new IOException("zipalign 不可用");
 
-        File workDir = new File(ctx.getCacheDir(), "build_proj_" + System.currentTimeMillis());
+        File workDir = new File(ctx.getCacheDir(), "build_java_" + System.currentTimeMillis());
         deleteRec(workDir);
         if (!workDir.mkdirs()) throw new IOException("无法创建工作目录");
-        log("工作目录: " + workDir.getAbsolutePath());
 
-        File projectRes = new File(projDir, "res");
+        File projectRes = new File(projDir, "src/main/res");
+        if (!projectRes.exists()) projectRes = new File(projDir, "res");
         File resCopy = new File(workDir, "res");
         if (projectRes.isDirectory()) {
             copyRec(projectRes, resCopy);
-            log("已拷贝项目 res/");
         } else {
             resCopy.mkdirs();
-            log("项目无 res/，用空目录");
         }
 
         File mipmapDir = new File(resCopy, "mipmap");
         mipmapDir.mkdirs();
         File mipmapPng = new File(mipmapDir, "ic_launcher.png");
-        if (mipmapPng.exists()) {
-            log("项目自带 mipmap/ic_launcher.png，保留");
-        } else if (iconFile != null && iconFile.exists()) {
+        if (iconFile != null && iconFile.exists()) {
             processIcon(iconFile, mipmapPng);
-        } else {
+        } else if (!mipmapPng.exists()) {
             writePlaceholderIcon(mipmapPng);
-            log("使用默认图标");
         }
 
         File assetsDir = new File(workDir, "assets");
@@ -214,61 +202,68 @@ public class ApkBuilder {
             dexCopies[i] = dex;
         }
 
+        return assembleApk(workDir, manifest, assetsDir, dexCopies, appNameFallback, signingConfig, reporter);
+    }
+
+    // ============ 公共打包流程 ============
+    private File assembleApk(File workDir, File manifestFile, File assetsDir,
+                             File[] dexFiles, String appName,
+                             SigningConfig signingConfig,
+                             ProgressReporter reporter) throws Exception {
+
+        if (reporter != null) reporter.onStageStart(BuildStage.AAPT2);
+
+        File androidJar = new File(ctx.getCacheDir(), "android_build.jar");
+        if (!androidJar.exists()) throw new IOException("android.jar 缺失，请重新构建");
+
+        File resDir = new File(workDir, "res");
         log("=== aapt2 compile ===");
         File compiledRes = new File(workDir, "compiled_res.zip");
-        runTool("aapt2", "compile", "--dir", resCopy.getAbsolutePath(),
-                "-o", compiledRes.getAbsolutePath());
+        runTool("aapt2", "compile", "--dir", resDir.getAbsolutePath(), "-o", compiledRes.getAbsolutePath());
 
         log("=== aapt2 link ===");
-        File androidJar = prepareAndroidJar();
         File baseApk = new File(workDir, "base.apk");
-        runTool("aapt2", "link",
-                "-o", baseApk.getAbsolutePath(),
-                "-I", androidJar.getAbsolutePath(),
-                "--manifest", manifest.getAbsolutePath(),
-                "-A", assetsDir.getAbsolutePath(),
-                "--min-sdk-version", "24",
-                "--target-sdk-version", "34",
+        runTool("aapt2", "link", "-o", baseApk.getAbsolutePath(), "-I", androidJar.getAbsolutePath(),
+                "--manifest", manifestFile.getAbsolutePath(), "-A", assetsDir.getAbsolutePath(),
+                "--min-sdk-version", "24", "--target-sdk-version", "34",
                 compiledRes.getAbsolutePath());
+
+        if (reporter != null) reporter.onStageEnd(BuildStage.AAPT2);
+        if (reporter != null) reporter.onStageStart(BuildStage.ZIPALIGN);
 
         log("=== 添加 classes.dex ===");
         File withDex = new File(workDir, "with_dex.apk");
-        addDexToApk(baseApk, withDex, dexCopies);
+        addDexToApk(baseApk, withDex, dexFiles);
 
         log("=== zipalign ===");
         File alignedApk = new File(workDir, "aligned.apk");
-        runTool("zipalign", "-p", "-f", "4",
-                withDex.getAbsolutePath(), alignedApk.getAbsolutePath());
+        runTool("zipalign", "-p", "-f", "4", withDex.getAbsolutePath(), alignedApk.getAbsolutePath());
 
-        log("=== 签名 ===");
+        if (reporter != null) reporter.onStageEnd(BuildStage.ZIPALIGN);
+        if (reporter != null) reporter.onStageStart(BuildStage.SIGN);
+
         File outDir = new File("/sdcard/Download");
-        if (!outDir.exists() || !outDir.canWrite()) {
-            outDir = ctx.getExternalFilesDir(null);
-            if (outDir == null) outDir = ctx.getFilesDir();
-        }
-        String safeName = appNameFallback == null ? "app" : appNameFallback;
-        safeName = safeName.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        if (!outDir.exists() || !outDir.canWrite()) outDir = ctx.getExternalFilesDir(null);
+        if (outDir == null) outDir = ctx.getFilesDir();
+
+        String safeName = appName.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
         if (safeName.isEmpty()) safeName = "app";
         File outputApk = new File(outDir, safeName + ".apk");
         if (outputApk.exists()) outputApk.delete();
 
         if (signingConfig != null && signingConfig.signingEnabled) {
             File ksFile = new File(signingConfig.projectRoot, signingConfig.keystorePath);
-            if (!ksFile.exists()) throw new IOException("keystore 文件不存在: " + ksFile);
-            signApkCustom(alignedApk, outputApk,
-                    ksFile, signingConfig.keystoreType,
-                    signingConfig.keystoreAlias,
-                    signingConfig.keystorePassword,
-                    signingConfig.keyPassword);
+            signApkCustom(alignedApk, outputApk, ksFile, signingConfig.keystoreType,
+                    signingConfig.keystoreAlias, signingConfig.keystorePassword, signingConfig.keyPassword);
         } else {
             signApk(alignedApk, outputApk);
         }
         log("签名完成: " + outputApk.getAbsolutePath());
+        if (reporter != null) reporter.onStageEnd(BuildStage.SIGN);
 
         return outputApk;
     }
 
-    // ============ 公共流程 ============
     private File prepareResAndManifest(File workDir, String appName, String pkg,
                                        File iconFile, List<String> permissions,
                                        String activityClass) throws Exception {
@@ -301,7 +296,6 @@ public class ApkBuilder {
                     }
                     if (scaled != bmp) scaled.recycle();
                     bmp.recycle();
-                    log("图标已处理: " + nw + "x" + nh);
                     handled = true;
                 }
             } catch (Exception e) {
@@ -309,11 +303,9 @@ public class ApkBuilder {
             }
             if (!handled) {
                 copyFile(iconFile, mipmapPng);
-                log("图标直接拷贝");
             }
         } else {
             writePlaceholderIcon(mipmapPng);
-            log("使用默认图标（蓝色方块）");
         }
 
         File manifestFile = new File(workDir, "AndroidManifest.xml");
@@ -337,111 +329,6 @@ public class ApkBuilder {
         m.append("</intent-filter>\n</activity>\n</application>\n</manifest>\n");
         writeFile(manifestFile, m.toString());
         return manifestFile;
-    }
-
-    private File assembleApk(File workDir, File manifestFile, File assetsDir,
-                             File[] dexFiles, String appName,
-                             SigningConfig signingConfig) throws Exception {
-        File androidJar = prepareAndroidJar();
-        File resDir = new File(workDir, "res");
-
-        log("=== aapt2 compile ===");
-        File compiledRes = new File(workDir, "compiled_res.zip");
-        runTool("aapt2", "compile", "--dir", resDir.getAbsolutePath(),
-                "-o", compiledRes.getAbsolutePath());
-
-        log("=== aapt2 link ===");
-        File baseApk = new File(workDir, "base.apk");
-        runTool("aapt2", "link",
-                "-o", baseApk.getAbsolutePath(),
-                "-I", androidJar.getAbsolutePath(),
-                "--manifest", manifestFile.getAbsolutePath(),
-                "-A", assetsDir.getAbsolutePath(),
-                "--min-sdk-version", "24",
-                "--target-sdk-version", "34",
-                compiledRes.getAbsolutePath());
-
-        log("=== 添加 classes.dex ===");
-        File withDex = new File(workDir, "with_dex.apk");
-        addDexToApk(baseApk, withDex, dexFiles);
-
-        log("=== zipalign ===");
-        File alignedApk = new File(workDir, "aligned.apk");
-        runTool("zipalign", "-p", "-f", "4",
-                withDex.getAbsolutePath(), alignedApk.getAbsolutePath());
-
-        log("=== 签名 ===");
-        File outDir = new File("/sdcard/Download");
-        if (!outDir.exists() || !outDir.canWrite()) {
-            outDir = ctx.getExternalFilesDir(null);
-            if (outDir == null) outDir = ctx.getFilesDir();
-        }
-        String safeName = appName.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        if (safeName.isEmpty()) safeName = "app";
-        File outputApk = new File(outDir, safeName + ".apk");
-        if (outputApk.exists()) outputApk.delete();
-
-        if (signingConfig != null && signingConfig.signingEnabled) {
-            File ksFile = new File(signingConfig.projectRoot, signingConfig.keystorePath);
-            if (!ksFile.exists()) throw new IOException("keystore 文件不存在: " + ksFile);
-            signApkCustom(alignedApk, outputApk,
-                    ksFile, signingConfig.keystoreType,
-                    signingConfig.keystoreAlias,
-                    signingConfig.keystorePassword,
-                    signingConfig.keyPassword);
-        } else {
-            signApk(alignedApk, outputApk);
-        }
-        log("签名完成: " + outputApk.getAbsolutePath());
-
-        return outputApk;
-    }
-
-    private File prepareAndroidJar() throws IOException {
-        File cached = new File(ctx.getFilesDir(), "android.jar");
-        if (cached.exists() && cached.length() > 1_000_000) {
-            log("android.jar 已就绪: " + cached.length() + " bytes");
-            return cached;
-        }
-
-        log("首次解压 android.jar.zip ...");
-        long t0 = System.currentTimeMillis();
-        File tmp = new File(ctx.getFilesDir(), "android.jar.tmp");
-
-        byte[] buf = new byte[65536];
-        try (InputStream is = ctx.getAssets().open("template/android.jar.zip");
-             java.util.zip.ZipInputStream zis =
-                     new java.util.zip.ZipInputStream(
-                             new java.io.BufferedInputStream(is));
-             OutputStream os = new FileOutputStream(tmp)) {
-
-            java.util.zip.ZipEntry entry;
-            boolean extracted = false;
-            while ((entry = zis.getNextEntry()) != null) {
-                if (entry.isDirectory()) continue;
-                int n;
-                while ((n = zis.read(buf)) > 0) os.write(buf, 0, n);
-                extracted = true;
-                break;
-            }
-            if (!extracted) throw new IOException("zip 里没有文件");
-        } catch (IOException e) {
-            throw new IOException("解压 android.jar.zip 失败: " + e.getMessage(), e);
-        }
-
-        if (!tmp.renameTo(cached)) {
-            try (InputStream in = new FileInputStream(tmp);
-                 OutputStream out = new FileOutputStream(cached)) {
-                int n;
-                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-            }
-            tmp.delete();
-        }
-
-        long dt = System.currentTimeMillis() - t0;
-        log("android.jar 解压完成: " + cached.length()
-                + " bytes, 耗时 " + (dt / 1000) + "s");
-        return cached;
     }
 
     private void addDexToApk(File srcApk, File dstApk, File[] dexFiles) throws IOException {
@@ -534,7 +421,6 @@ public class ApkBuilder {
                                File ksFile, String ksType,
                                String alias, String storePass, String keyPass)
             throws Exception {
-
         if (keyPass == null || keyPass.isEmpty()) keyPass = storePass;
 
         KeyStore ks = KeyStore.getInstance(ksType);
@@ -571,7 +457,6 @@ public class ApkBuilder {
     private void runTool(String name, String... args) throws IOException, InterruptedException {
         File tool = tm.getTool(name);
         if (tool == null) throw new IOException(name + " 未找到");
-        if (!tool.canExecute()) throw new IOException(name + " 不可执行");
 
         List<String> cmd = new ArrayList<>();
         cmd.add(tool.getAbsolutePath());
@@ -588,10 +473,14 @@ public class ApkBuilder {
 
         Process p = pb.start();
         BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+        StringBuilder errOut = new StringBuilder();
         String line;
-        while ((line = br.readLine()) != null) log("  " + line);
+        while ((line = br.readLine()) != null) {
+            log("  " + line);
+            errOut.append(line).append("\n");
+        }
         int code = p.waitFor();
-        if (code != 0) throw new IOException(name + " 失败, exit=" + code);
+        if (code != 0) throw new IOException(name + " 失败 (exit=" + code + ")\n真实错误:\n" + errOut.toString());
     }
 
     private void copyAsset(String assetPath, File out) throws IOException {
@@ -656,14 +545,12 @@ public class ApkBuilder {
                 }
                 if (scaled != bmp) scaled.recycle();
                 bmp.recycle();
-                log("图标已处理: " + nw + "x" + nh);
                 return;
             }
         } catch (Exception e) {
             log("图标重编码失败，改为直接拷贝: " + e.getMessage());
         }
         copyFile(iconFile, outPng);
-        log("图标直接拷贝");
     }
 
     private static void deleteRec(File f) {
@@ -695,7 +582,6 @@ public class ApkBuilder {
                     bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
                 }
                 bmp.recycle();
-                log("使用系统默认图标");
                 return;
             }
         } catch (Throwable e) {

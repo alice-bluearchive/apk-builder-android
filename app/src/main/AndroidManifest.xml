@@ -15,10 +15,15 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.ApkBuilder">
+        <activity
+            android:name=".ExtensionStoreActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Material3.Dark.NoActionBar" />
 
         <activity
             android:name=".ProjectListActivity"
@@ -28,7 +33,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
+        <activity
+            android:name=".TerminalActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Material3.Dark.NoActionBar" />
+        <activity
+            android:name=".EditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.Material3.Dark.NoActionBar" />
         <activity
             android:name=".MainActivity"
             android:exported="false"

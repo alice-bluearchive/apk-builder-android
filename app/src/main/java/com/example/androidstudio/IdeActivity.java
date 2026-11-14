@@ -1,4 +1,5 @@
-﻿package com.example.androidstudio;
+package com.example.androidstudio;
+
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -22,13 +23,20 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.androidstudio.build.BuildProgress;
+import com.example.androidstudio.build.BuildStage;
+import com.example.androidstudio.build.ErrorCollector;
+import com.example.androidstudio.build.ProgressReporter;
 import com.google.android.material.button.MaterialButton;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,6 +50,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+
 public class IdeActivity extends AppCompatActivity {
     private static final int TERMINAL_COLLAPSED_DP = 40;
     private static final int TERMINAL_EXPANDED_DP = 220;
@@ -54,11 +63,16 @@ public class IdeActivity extends AppCompatActivity {
     private static final int DEFAULT_PANEL_DP = 240;
     private static final String PREF_IDE = "ide_prefs";
     private static final String PREF_PANEL_WIDTH = "panel_width";
+
     private String projectName;
     private File projectRoot;
     private RecyclerView fileTree;
     private FileTreeAdapter adapter;
     private TextView tvTitle, tvEditorPlaceholder, tvTerminal, tvTerminalArrow;
+
+    // ==== 状态栏变量 ====
+    private TextView tvStatusBranch, tvStatusErrors, tvStatusCursor, tvStatusEncoding, tvStatusLang;
+
     private ImageButton btnBack, btnMenu, btnBuild, btnSave, btnToggleSidebar,
             btnTerminalCopy, btnTerminalClear,
             btnNewFile, btnNewFolder, btnRefreshTree;
@@ -78,30 +92,47 @@ public class IdeActivity extends AppCompatActivity {
     private final List<SearchResult> searchResults = new ArrayList<>();
     private SearchAdapter searchAdapter;
     private volatile boolean searching = false;
+
     private LinearLayout terminalPanel, terminalHeader, tabBar;
     private ScrollView terminalScroll;
     private HorizontalScrollView tabScroll;
     private WebView webEditor;
+
+    // ==== 底部面板 Tab 变量 ====
+    private TextView tabOutput, tabProblems, tabTerminal;
+    private RecyclerView listProblems;
+    private ProblemAdapter problemAdapter;
+    private final List<ErrorCollector.Line> currentProblems = new ArrayList<>();
+
     private final List<FileNode> allNodes = new ArrayList<>();
     private final List<FileNode> visibleNodes = new ArrayList<>();
     private final List<EditorTab> tabs = new ArrayList<>();
     private EditorTab currentTab = null;
+
     private final List<ExtensionManager.MenuItem> extMenuItems = new ArrayList<>();
     private final List<SidebarPanelSpec> extSidebarPanels = new ArrayList<>();
-    private final java.util.Map<String, View> extPanelViewCache =
-            new java.util.HashMap<>();
+    private final java.util.Map<String, View> extPanelViewCache = new java.util.HashMap<>();
     private int lastExtGeneration = -1;
     private boolean terminalExpanded = false;
     private volatile boolean building = false;
+
     private String activePanel = "files";
     private String lastActivePanel = "files";
     private View panelDivider;
     private float panelDragStartX;
     private int panelDragStartWidth;
+
+    // ==== 进度条与报错导出 ====
+    private com.example.androidstudio.ui.BuildProgressView progressView;
+    private MaterialButton btnExportError;
+    private ProjectBuilder currentBuilder;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LocaleHelper.apply(this, LocaleHelper.current(this));
         setContentView(R.layout.activity_ide);
+
         projectName = getIntent().getStringExtra("project");
         if (projectName == null) {
             Toast.makeText(this, "No project", Toast.LENGTH_SHORT).show();
@@ -109,6 +140,7 @@ public class IdeActivity extends AppCompatActivity {
             return;
         }
         projectRoot = ProjectStore.dir(projectName);
+
         bindViews();
         setupToolbar();
         setupSideBar();
@@ -117,6 +149,7 @@ public class IdeActivity extends AppCompatActivity {
         setupFileTree();
         hideEditor();
         refreshExtPanel();
+
         ExtensionManager mgr = ExtensionManager.get(this);
         mgr.setLogger(this::terminalLog);
         mgr.ensureInit();
@@ -128,6 +161,7 @@ public class IdeActivity extends AppCompatActivity {
         lastExtGeneration = mgr.getGeneration();
         renderExtensionPanels();
     }
+
     private void bindViews() {
         tvTitle = findViewById(R.id.tvTitle);
         tvTitle.setText(projectName);
@@ -172,7 +206,20 @@ public class IdeActivity extends AppCompatActivity {
         tvSearchStatus = findViewById(R.id.tvSearchStatus);
         listSearchResult = findViewById(R.id.listSearchResult);
         panelDivider = findViewById(R.id.panelDivider);
+
+        // ==== 底部面板 Tab ====
+        tabOutput = findViewById(R.id.tabOutput);
+        tabProblems = findViewById(R.id.tabProblems);
+        tabTerminal = findViewById(R.id.tabTerminal);
+        listProblems = findViewById(R.id.listProblems);
+
+        // ==== 绑定状态栏 ====
+        tvStatusBranch = findViewById(R.id.tvStatusBranch);
+        tvStatusErrors = findViewById(R.id.tvStatusErrors);
+        tvStatusCursor = findViewById(R.id.tvStatusCursor);
+        tvStatusLang = findViewById(R.id.tvStatusLang);
     }
+
     private void setupToolbar() {
         btnBack.setOnClickListener(v -> finish());
         btnToggleSidebar.setOnClickListener(v -> toggleSidebar());
@@ -182,17 +229,54 @@ public class IdeActivity extends AppCompatActivity {
         btnNewFile.setOnClickListener(v -> promptCreate(projectRoot, false));
         btnNewFolder.setOnClickListener(v -> promptCreate(projectRoot, true));
         btnRefreshTree.setOnClickListener(v -> rebuildTree());
+
+        // 点击标题唤起命令面板
+        tvTitle.setOnClickListener(v -> {
+            CommandPaletteDialog dialog = new CommandPaletteDialog(this, projectRoot, new CommandPaletteDialog.OnCommandSelected() {
+                @Override
+                public void onCommand(String commandId, Object payload) {
+                    switch (commandId) {
+                        case "build": onBuildClicked(); break;
+                        case "terminal": startActivity(new Intent(IdeActivity.this, TerminalActivity.class).putExtra("project", projectName)); break;
+                        case "settings": startActivity(new Intent(IdeActivity.this, MainActivity.class).putExtra("project", projectName)); break;
+                        case "language": LocaleHelper.toggle(IdeActivity.this); recreate(); break;
+                        case "extensions": startActivity(new Intent(IdeActivity.this, ExtensionActivity.class)); break;
+                        case "reload": rebuildTree(); break;
+                        case "clear": tvTerminal.setText(""); break;
+                    }
+                }
+
+                @Override
+                public void onFileSelected(File file) {
+                    openFileAtLine(file.getAbsolutePath(), 1);
+                }
+            });
+            dialog.show();
+        });
     }
-    // ============== 渚ц竟鏍?==============
+
+    // ============== 侧边栏 ==============
     private void setupSideBar() {
         iconFiles.setOnClickListener(v -> togglePanel("files"));
         iconSearch.setOnClickListener(v -> togglePanel("search"));
-        iconGit.setOnClickListener(v -> togglePanel("git"));
+
+        iconGit.setOnClickListener(v -> {
+            togglePanel("git");
+            refreshGitPanel(); // 刷新原生 Git 面板
+        });
+
         iconExtensions.setOnClickListener(v -> togglePanel("extensions"));
-        btnExtManage.setOnClickListener(v ->
-                startActivity(new Intent(this, ExtensionActivity.class)));
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            iconFiles.setTooltipText("Explorer");
+            iconSearch.setTooltipText("Search");
+            iconGit.setTooltipText("Source Control");
+            iconExtensions.setTooltipText("Extensions");
+        }
+        btnExtManage.setOnClickListener(v -> startActivity(new Intent(this, ExtensionActivity.class)));
+
         setupSearch();
         setupPanelResize();
+
         int saved = getSharedPreferences(PREF_IDE, MODE_PRIVATE)
                 .getInt(PREF_PANEL_WIDTH, dp(DEFAULT_PANEL_DP));
         ViewGroup.LayoutParams lp = panelContainer.getLayoutParams();
@@ -200,6 +284,7 @@ public class IdeActivity extends AppCompatActivity {
         panelContainer.setLayoutParams(lp);
         selectPanel("files");
     }
+
     private void setupPanelResize() {
         panelDivider.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
@@ -231,6 +316,7 @@ public class IdeActivity extends AppCompatActivity {
         });
         panelDivider.setOnClickListener(new View.OnClickListener() {
             private long lastClick = 0;
+
             @Override
             public void onClick(View v) {
                 long now = System.currentTimeMillis();
@@ -246,6 +332,7 @@ public class IdeActivity extends AppCompatActivity {
             }
         });
     }
+
     private void togglePanel(String name) {
         if (iconBar.getVisibility() != View.VISIBLE) {
             showSidebar();
@@ -258,6 +345,7 @@ public class IdeActivity extends AppCompatActivity {
         }
         selectPanel(name);
     }
+
     private void hideSidebar() {
         if (activePanel != null) lastActivePanel = activePanel;
         activePanel = null;
@@ -266,11 +354,13 @@ public class IdeActivity extends AppCompatActivity {
         panelDivider.setVisibility(View.GONE);
         updateIconTint();
     }
+
     private void showSidebar() {
         iconBar.setVisibility(View.VISIBLE);
         panelContainer.setVisibility(View.VISIBLE);
         panelDivider.setVisibility(View.VISIBLE);
     }
+
     private void toggleSidebar() {
         if (iconBar.getVisibility() == View.VISIBLE) {
             hideSidebar();
@@ -280,6 +370,7 @@ public class IdeActivity extends AppCompatActivity {
             selectPanel(target);
         }
     }
+
     private void selectPanel(String name) {
         activePanel = name;
         lastActivePanel = name;
@@ -287,12 +378,27 @@ public class IdeActivity extends AppCompatActivity {
         panelContainer.setVisibility(View.VISIBLE);
         panelDivider.setVisibility(View.VISIBLE);
         panelExtContainer.setVisibility(View.GONE);
+
         panelFiles.setVisibility("files".equals(name) ? View.VISIBLE : View.GONE);
         panelSearch.setVisibility("search".equals(name) ? View.VISIBLE : View.GONE);
         panelGit.setVisibility("git".equals(name) ? View.VISIBLE : View.GONE);
         panelExtensions.setVisibility("extensions".equals(name) ? View.VISIBLE : View.GONE);
         updateIconTint();
     }
+
+    private void updateStatusLang(String fileName) {
+        String n = fileName.toLowerCase();
+        String lang = "Plain Text";
+        if (n.endsWith(".java")) lang = "Java";
+        else if (n.endsWith(".xml")) lang = "XML";
+        else if (n.endsWith(".html")) lang = "HTML";
+        else if (n.endsWith(".js")) lang = "JavaScript";
+        else if (n.endsWith(".json")) lang = "JSON";
+        else if (n.endsWith(".gradle") || n.endsWith(".kts")) lang = "Gradle";
+
+        tvStatusLang.setText(lang);
+    }
+
     private void updateIconTint() {
         boolean sidebarVisible = iconBar.getVisibility() == View.VISIBLE;
         iconFiles.setImageTintList(ColorStateList.valueOf(
@@ -303,70 +409,46 @@ public class IdeActivity extends AppCompatActivity {
                 sidebarVisible && "git".equals(activePanel) ? ICON_ON : ICON_OFF));
         iconExtensions.setImageTintList(ColorStateList.valueOf(
                 sidebarVisible && "extensions".equals(activePanel) ? ICON_ON : ICON_OFF));
+
         if (iconBarExt != null) {
             for (int i = 0; i < iconBarExt.getChildCount(); i++) {
                 View c = iconBarExt.getChildAt(i);
                 if (c instanceof ImageButton) {
-                    boolean on = sidebarVisible && activePanel != null
-                            && activePanel.startsWith("ext:");
-                    ((ImageButton) c).setImageTintList(ColorStateList.valueOf(
-                            on ? ICON_ON : ICON_OFF));
+                    boolean on = sidebarVisible && activePanel != null && activePanel.startsWith("ext:");
+                    ((ImageButton) c).setImageTintList(ColorStateList.valueOf(on ? ICON_ON : ICON_OFF));
                 }
             }
         }
     }
+
     private void refreshExtPanel() {
         int n = ExtensionManager.get(this).getInstalled().size();
         tvExtCount.setText(getString(R.string.ide_ext_panel_hint, n));
     }
-    // ============== 娓叉煋鎵╁睍鐨勪晶杈规爮闈㈡澘 ==============
+
+    // ============== 渲染扩展与 Git 侧边栏 ==============
     private void renderExtensionPanels() {
         iconBarExt.removeAllViews();
         panelExtContainer.removeAllViews();
         extPanelViewCache.clear();
-        // git 闈㈡澘鍏堝浣?
-        gitPanelContent.removeAllViews();
-        if (tvGitPlaceholder != null) {
-            if (tvGitPlaceholder.getParent() != null) {
-                ((ViewGroup) tvGitPlaceholder.getParent()).removeView(tvGitPlaceholder);
-            }
-            gitPanelContent.addView(tvGitPlaceholder);
-            tvGitPlaceholder.setVisibility(View.VISIBLE);
-        }
+
         for (SidebarPanelSpec spec : extSidebarPanels) {
-            if ("git".equals(spec.iconName)) {
-                renderIntoGitPanel(spec);
-            } else {
-                renderCustomPanel(spec);
-            }
+            renderCustomPanel(spec);
         }
     }
-    private void renderIntoGitPanel(SidebarPanelSpec spec) {
-        if (tvGitPlaceholder != null) {
-            tvGitPlaceholder.setVisibility(View.GONE);
-        }
-        if (spec.items == null) return;
-        for (SidebarPanelItem item : spec.items) {
-            MaterialButton btn = makePanelButton(item.label);
-            btn.setOnClickListener(v -> safeRun(item.onClick));
-            gitPanelContent.addView(btn);
-        }
-    }
+
     private void renderCustomPanel(final SidebarPanelSpec spec) {
-        // ---------- 鍥炬爣 ----------
         final ImageButton icon = new ImageButton(this);
         icon.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
         icon.setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+
         boolean iconSet = false;
-        // 浼樺厛锛氭墿灞曡嚜甯?icon.png
-        if (spec.iconFile != null && !spec.iconFile.isEmpty()
-                && spec.extDir != null) {
+        if (spec.iconFile != null && !spec.iconFile.isEmpty() && spec.extDir != null) {
             File f = new File(spec.extDir, spec.iconFile);
             if (f.exists()) {
                 try {
-                    android.graphics.Bitmap bmp =
-                            android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+                    android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
                     if (bmp != null) {
                         icon.setImageBitmap(bmp);
                         iconSet = true;
@@ -374,13 +456,12 @@ public class IdeActivity extends AppCompatActivity {
                 } catch (Throwable ignored) {}
             }
         }
-        // 鍏滃簳锛氬唴缃浘鏍囬泦
         if (!iconSet) {
             icon.setImageResource(iconResFor(spec.iconName));
             icon.setImageTintList(ColorStateList.valueOf(ICON_OFF));
         }
         iconBarExt.addView(icon);
-        // ---------- 闈㈡澘瀹瑰櫒 ----------
+
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setBackgroundColor(0xFF252526);
@@ -388,7 +469,7 @@ public class IdeActivity extends AppCompatActivity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         panel.setVisibility(View.GONE);
-        // 鏍囬鏍?
+
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setBackgroundColor(0xFF2D2D2D);
@@ -396,16 +477,16 @@ public class IdeActivity extends AppCompatActivity {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(40)));
         header.setPadding(dp(12), 0, dp(4), 0);
         header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
         TextView title = new TextView(this);
         title.setText(spec.title);
         title.setTextColor(0xFFCCCCCC);
         title.setTextSize(12);
         header.addView(title);
         panel.addView(header);
-        // ---------- 鍐呭鍖?----------
+
         View contentView;
         if (spec.viewFactory != null) {
-            // 鎵╁睍鑷畾涔?View
             View cached = extPanelViewCache.get(spec.id);
             if (cached != null) {
                 contentView = cached;
@@ -425,7 +506,6 @@ public class IdeActivity extends AppCompatActivity {
             contentView.setLayoutParams(lp);
             panel.addView(contentView);
         } else {
-            // items 鍒楄〃
             ScrollView sv = new ScrollView(this);
             LinearLayout items = new LinearLayout(this);
             items.setOrientation(LinearLayout.VERTICAL);
@@ -442,7 +522,7 @@ public class IdeActivity extends AppCompatActivity {
             contentView = sv;
         }
         panelExtContainer.addView(panel);
-        // ---------- 鐐瑰嚮鍒囨崲闈㈡澘 ----------
+
         final String panelKey = "ext:" + spec.id;
         icon.setOnClickListener(v -> {
             if (panelKey.equals(activePanel)) {
@@ -467,6 +547,7 @@ public class IdeActivity extends AppCompatActivity {
             updateIconTint();
         });
     }
+
     private View buildErrorView(String msg) {
         TextView tv = new TextView(this);
         tv.setText(msg);
@@ -475,28 +556,32 @@ public class IdeActivity extends AppCompatActivity {
         tv.setPadding(dp(16), dp(16), dp(16), dp(16));
         return tv;
     }
+
     private MaterialButton makePanelButton(String label) {
-        MaterialButton btn = new MaterialButton(this, null,
-                com.google.android.material.R.attr.borderlessButtonStyle);
+        MaterialButton btn = new MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle);
         btn.setText(label);
         btn.setAllCaps(false);
         btn.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         btn.setTextSize(12);
         btn.setTextColor(0xFFDDDDDD);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMarginStart(dp(8));
         lp.setMarginEnd(dp(8));
         lp.topMargin = dp(4);
         btn.setLayoutParams(lp);
         return btn;
     }
+
     private void safeRun(Runnable r) {
         if (r == null) return;
-        try { r.run(); }
-        catch (Throwable t) { toast("鎵╁睍鍑洪敊: " + t.getMessage()); }
+        try {
+            r.run();
+        } catch (Throwable t) {
+            toast("Extension error: " + t.getMessage());
+        }
     }
+
     private int iconResFor(String name) {
         if (name == null) return R.drawable.ic_side_extensions;
         switch (name) {
@@ -508,25 +593,130 @@ public class IdeActivity extends AppCompatActivity {
             default:           return R.drawable.ic_side_extensions;
         }
     }
-    // ============== 鎼滅储 ==============
+
+    // ============== 原生 Git 面板逻辑 ==============
+    private void refreshGitPanel() {
+        if (gitPanelContent == null) return;
+        gitPanelContent.removeAllViews();
+
+        GitManager gm = new GitManager(projectRoot);
+        if (!gm.isRepo()) {
+            TextView tv = new TextView(this);
+            tv.setText("Not a git repository. Click below to init.");
+            tv.setTextColor(0xFFAAAAAA);
+            tv.setPadding(dp(16), dp(16), dp(16), dp(16));
+            gitPanelContent.addView(tv);
+
+            MaterialButton btnInit = makePanelButton("Git Init");
+            btnInit.setOnClickListener(v -> {
+                try {
+                    String res = gm.init();
+
+                    // 自动生成 .gitignore
+                    File gitignore = new File(projectRoot, ".gitignore");
+                    if (!gitignore.exists()) {
+                        String ignoreContent = "build/\noutput/\n.gradle/\nlocal.properties\n*.apk\n*.dex\n";
+                        writeText(gitignore, ignoreContent);
+                        terminalLog("已自动生成 .gitignore");
+                    }
+
+                    toast(res);
+                    refreshGitPanel();
+                } catch (Exception e) {
+                    toast("Init failed: " + e.getMessage());
+                }
+            });
+            gitPanelContent.addView(btnInit);
+            return;
+        }
+
+        // 已初始化，显示操作按钮
+        MaterialButton btnStatus = makePanelButton("Status (检查修改)");
+        btnStatus.setOnClickListener(v -> {
+            try {
+                String st = gm.status();
+                terminalLog("=== Git Status ===");
+                for (String line : st.split("\n")) terminalLog(line);
+                switchPanelTab(0);
+            } catch (Exception e) { toast(e.getMessage()); }
+        });
+        gitPanelContent.addView(btnStatus);
+
+        MaterialButton btnAdd = makePanelButton("Add All (暂存全部)");
+        btnAdd.setOnClickListener(v -> {
+            try {
+                toast(gm.addAll());
+                refreshGitPanel();
+            } catch (Exception e) { toast("Add failed: " + e.getMessage()); }
+        });
+        gitPanelContent.addView(btnAdd);
+
+        MaterialButton btnCommit = makePanelButton("Commit (提交代码)");
+        btnCommit.setOnClickListener(v -> promptGitCommit(gm));
+        gitPanelContent.addView(btnCommit);
+
+        MaterialButton btnLog = makePanelButton("Log (提交历史)");
+        btnLog.setOnClickListener(v -> {
+            try {
+                List<String> logs = gm.getLog();
+                if (logs.isEmpty()) {
+                    toast("No commits yet.");
+                } else {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Git Log")
+                            .setItems(logs.toArray(new String[0]), null)
+                            .show();
+                }
+            } catch (Exception e) { toast(e.getMessage()); }
+        });
+        gitPanelContent.addView(btnLog);
+    }
+
+    private void promptGitCommit(GitManager gm) {
+        EditText et = new EditText(this);
+        et.setHint("Commit message");
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(dp(24), dp(16), dp(24), 0);
+        container.addView(et);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Git Commit")
+                .setView(container)
+                .setPositiveButton("Commit", (d, w) -> {
+                    String msg = et.getText().toString().trim();
+                    if (msg.isEmpty()) {
+                        toast("Message cannot be empty.");
+                        return;
+                    }
+                    try {
+                        String res = gm.commit(msg, "APK Builder", "user@apkbuilder.dev");
+                        toast(res);
+                        terminalLog(res);
+                        refreshGitPanel();
+                    } catch (Exception e) {
+                        toast("Commit failed: " + e.getMessage());
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // ============== 搜索 ==============
     private void setupSearch() {
         listSearchResult.setLayoutManager(new LinearLayoutManager(this));
-        searchAdapter = new SearchAdapter(searchResults,
-                projectRoot.getAbsolutePath(),
-                r -> onSearchResultClick(r));
+        searchAdapter = new SearchAdapter(searchResults, projectRoot.getAbsolutePath(), r -> onSearchResultClick(r));
         listSearchResult.setAdapter(searchAdapter);
+
         etSearch.setOnEditorActionListener((v, actionId, event) -> {
             startSearch(etSearch.getText().toString());
             return true;
         });
+
         etSearch.addTextChangedListener(new android.text.TextWatcher() {
             private long last = 0;
-            @Override
-            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override
-            public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override
-            public void afterTextChanged(android.text.Editable s) {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
                 long now = System.currentTimeMillis();
                 last = now;
                 tvSearchStatus.postDelayed(() -> {
@@ -535,6 +725,7 @@ public class IdeActivity extends AppCompatActivity {
                 }, 500);
             }
         });
+
         btnSearchClear.setOnClickListener(v -> {
             etSearch.setText("");
             searchResults.clear();
@@ -542,6 +733,7 @@ public class IdeActivity extends AppCompatActivity {
             tvSearchStatus.setText("");
         });
     }
+
     private void startSearch(String query) {
         if (searching) return;
         if (query == null || query.trim().isEmpty()) {
@@ -553,7 +745,7 @@ public class IdeActivity extends AppCompatActivity {
         final String q = query.trim();
         if ("*".equals(q)) {
             searching = true;
-            tvSearchStatus.setText("璇婃柇锛氬垪鍑烘墍鏈夋枃浠垛€?);
+            tvSearchStatus.setText("Diag: listing all files...");
             new Thread(() -> {
                 List<SearchResult> results = new ArrayList<>();
                 listAllFiles(projectRoot, results);
@@ -563,12 +755,12 @@ public class IdeActivity extends AppCompatActivity {
                     searchResults.clear();
                     searchResults.addAll(results);
                     searchAdapter.notifyDataSetChanged();
-                    tvSearchStatus.setText("鍏?" + count + " 涓枃浠讹紙鏍? "
-                            + projectRoot.getAbsolutePath() + "锛?);
+                    tvSearchStatus.setText("Total " + count + " files (Root: " + projectRoot.getAbsolutePath() + ")");
                 });
             }, "diag").start();
             return;
         }
+
         searching = true;
         tvSearchStatus.setText(getString(R.string.ide_search_searching, q));
         new Thread(() -> {
@@ -590,6 +782,7 @@ public class IdeActivity extends AppCompatActivity {
             });
         }, "search").start();
     }
+
     private void listAllFiles(File dir, List<SearchResult> out) {
         if (dir == null || !dir.exists()) return;
         File[] kids = dir.listFiles();
@@ -597,10 +790,7 @@ public class IdeActivity extends AppCompatActivity {
         for (File f : kids) {
             if (f.isDirectory()) {
                 String n = f.getName();
-                if (n.startsWith(".") || n.equals("build")
-                        || n.equals("output") || n.equals("node_modules")) {
-                    continue;
-                }
+                if (n.startsWith(".") || n.equals("build") || n.equals("output") || n.equals("node_modules")) continue;
                 listAllFiles(f, out);
             } else {
                 SearchResult r = new SearchResult();
@@ -614,6 +804,7 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
+
     private void scanDir(File dir, String query, List<SearchResult> out) {
         if (out.size() >= 500) return;
         File[] kids = dir.listFiles();
@@ -622,10 +813,7 @@ public class IdeActivity extends AppCompatActivity {
             if (out.size() >= 500) return;
             if (f.isDirectory()) {
                 String n = f.getName();
-                if (n.startsWith(".") || n.equals("build")
-                        || n.equals("output") || n.equals("node_modules")) {
-                    continue;
-                }
+                if (n.startsWith(".") || n.equals("build") || n.equals("output") || n.equals("node_modules")) continue;
                 scanDir(f, query, out);
             } else {
                 String name = f.getName().toLowerCase();
@@ -647,10 +835,10 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
+
     private void scanFile(File f, String query, List<SearchResult> out) {
         String q = query.toLowerCase();
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(f), "UTF-8"))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"))) {
             String line;
             int num = 0;
             while ((line = br.readLine()) != null) {
@@ -671,11 +859,11 @@ public class IdeActivity extends AppCompatActivity {
                     r.matchStart = idx - start;
                     r.matchEnd = r.matchStart + query.length();
                     if (start > 0) {
-                        snippet = "鈥? + snippet;
-                        r.matchStart += 1;
-                        r.matchEnd += 1;
+                        snippet = "..." + snippet;
+                        r.matchStart += 3;
+                        r.matchEnd += 3;
                     }
-                    if (end < line.length()) snippet = snippet + "鈥?;
+                    if (end < line.length()) snippet = snippet + "...";
                     r.lineText = snippet;
                     out.add(r);
                     if (out.size() >= 500) return;
@@ -683,6 +871,7 @@ public class IdeActivity extends AppCompatActivity {
             }
         } catch (Exception ignored) {}
     }
+
     private static boolean isTextFile(String name) {
         String[] exts = {".java", ".kt", ".xml", ".html", ".htm", ".js", ".css",
                 ".json", ".txt", ".md", ".gradle", ".kts", ".properties",
@@ -691,13 +880,15 @@ public class IdeActivity extends AppCompatActivity {
         for (String e : exts) if (name.endsWith(e)) return true;
         return false;
     }
+
     private void onSearchResultClick(SearchResult r) {
         openFileAtLine(r.file.getAbsolutePath(), r.line <= 0 ? 1 : r.line);
     }
+
     private void openFileAtLine(String path, int line) {
         File f = new File(path);
         if (!f.exists()) {
-            toast("鏂囦欢涓嶅瓨鍦? " + path);
+            toast(getString(R.string.file_not_found, path));
             return;
         }
         for (EditorTab t : tabs) {
@@ -712,39 +903,128 @@ public class IdeActivity extends AppCompatActivity {
         currentTab = tab;
         refreshTabBar();
         showEditor();
+        updateStatusLang(f.getName()); // 更新状态栏语言
         try {
             String content = readText(f);
             String mode = modeForFile(f.getName());
-            String js = "window.openFile("
-                    + escapeJsString(path) + ","
-                    + escapeJsString(content) + ","
-                    + escapeJsString(mode) + ");";
+            String js = "window.openFile(" + escapeJsString(path) + "," + escapeJsString(content) + "," + escapeJsString(mode) + ");";
             webEditor.evaluateJavascript(js, null);
             postGotoLine(line);
         } catch (Exception e) {
-            toast("鎵撳紑澶辫触: " + e.getMessage());
+            toast(getString(R.string.ide_open_failed, e.getMessage()));
         }
     }
+
     private void postGotoLine(final int line) {
         webEditor.postDelayed(() -> {
             String js = "window.gotoLine(" + line + ");";
             webEditor.evaluateJavascript(js, null);
         }, 250);
     }
+
+    // ============== 底部面板（终端 & 问题） ==============
     private void setupTerminal() {
         terminalHeader.setOnClickListener(v -> toggleTerminal());
-        btnTerminalClear.setOnClickListener(v -> tvTerminal.setText(""));
+        tvTerminalArrow.setOnClickListener(v -> toggleTerminal());
+
+        btnTerminalClear.setOnClickListener(v -> {
+            tvTerminal.setText("");
+            currentProblems.clear();
+            problemAdapter.notifyDataSetChanged();
+        });
+
         btnTerminalCopy.setOnClickListener(v -> {
-            ClipboardManager cm = (ClipboardManager)
-                    getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
-                cm.setPrimaryClip(ClipData.newPlainText(
-                        "terminal", tvTerminal.getText().toString()));
-                Toast.makeText(this, getString(R.string.ide_copied),
-                        Toast.LENGTH_SHORT).show();
+                cm.setPrimaryClip(ClipData.newPlainText("terminal", tvTerminal.getText().toString()));
+                Toast.makeText(this, getString(R.string.ide_copied), Toast.LENGTH_SHORT).show();
             }
         });
+
+        // ==== Problems 列表初始化 ====
+        problemAdapter = new ProblemAdapter(currentProblems, (path, line) -> {
+            File f = new File(path);
+            if (!f.exists()) f = new File(projectRoot, path); // 尝试补全相对路径
+
+            if (f.exists()) {
+                openFileAtLine(f.getAbsolutePath(), line);
+            } else {
+                toast(getString(R.string.file_not_found, path));
+            }
+        });
+        listProblems.setLayoutManager(new LinearLayoutManager(this));
+        listProblems.setAdapter(problemAdapter);
+
+        // ==== Tab 点击事件 ====
+        tabOutput.setOnClickListener(v -> switchPanelTab(0));
+        tabProblems.setOnClickListener(v -> switchPanelTab(1));
+        tabTerminal.setOnClickListener(v -> {
+            Intent i = new Intent(IdeActivity.this, TerminalActivity.class);
+            i.putExtra("project", projectName);
+            startActivity(i);
+        });
+
+        // ==== 初始化进度条 ====
+        progressView = new com.example.androidstudio.ui.BuildProgressView(this);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
+        progressView.setLayoutParams(pLp);
+        // 加在 header 的下面
+        terminalPanel.addView(progressView, 1);
+
+        // ==== 初始化导出报错按钮 ====
+        btnExportError = new MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle);
+        btnExportError.setText(getString(R.string.export_error));
+        btnExportError.setTextSize(11);
+        btnExportError.setTextColor(0xFFE57373);
+        btnExportError.setVisibility(View.GONE);
+        btnExportError.setOnClickListener(v -> exportErrorReport());
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        btnLp.gravity = android.view.Gravity.CENTER_VERTICAL;
+        btnExportError.setLayoutParams(btnLp);
+        // 放在 Tab 前面
+        terminalHeader.addView(btnExportError, 0);
+
+        switchPanelTab(0); // 默认显示 Output
     }
+
+    private void switchPanelTab(int index) {
+        if (index == 0) {
+            tabOutput.setTextColor(0xFFCCCCCC);
+            tabProblems.setTextColor(0xFF888888);
+            terminalScroll.setVisibility(View.VISIBLE);
+            listProblems.setVisibility(View.GONE);
+        } else {
+            tabOutput.setTextColor(0xFF888888);
+            tabProblems.setTextColor(0xFFCCCCCC);
+            terminalScroll.setVisibility(View.GONE);
+            listProblems.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void exportErrorReport() {
+        if (currentBuilder == null) {
+            toast(getString(R.string.no_build_history));
+            return;
+        }
+        try {
+            File report = currentBuilder.exportErrorReport();
+            if (report != null && report.exists()) {
+                new AlertDialog.Builder(this)
+                        .setTitle(getString(R.string.error_exported_title))
+                        .setMessage(getString(R.string.error_exported_msg, report.getAbsolutePath()))
+                        .setPositiveButton("OK", null)
+                        .show();
+            } else {
+                toast(getString(R.string.no_error_log));
+            }
+        } catch (Exception e) {
+            toast(getString(R.string.export_failed, e.getMessage()));
+        }
+    }
+
     private void setupWebEditor() {
         WebSettings ws = webEditor.getSettings();
         ws.setJavaScriptEnabled(true);
@@ -761,15 +1041,39 @@ public class IdeActivity extends AppCompatActivity {
         webEditor.addJavascriptInterface(new Bridge(), "AndroidBridge");
         webEditor.loadUrl("file:///android_asset/editor/editor_multi.html");
         webEditor.requestFocus();
+
+        // 撤销
+        findViewById(R.id.btnEditorUndo).setOnClickListener(view -> {
+            webEditor.evaluateJavascript("editor.undo();", null);
+        });
+
+        // 重做
+        findViewById(R.id.btnEditorRedo).setOnClickListener(view -> {
+            webEditor.evaluateJavascript("editor.redo();", null);
+        });
+
+
+
+        // 快捷注释
+        findViewById(R.id.btnEditorComment).setOnClickListener(view -> {
+            webEditor.evaluateJavascript("window.toggleComment();", null);
+        });
+
+        // 一键格式化
+        findViewById(R.id.btnEditorFormat).setOnClickListener(view -> {
+            webEditor.evaluateJavascript("window.formatCode();", null);
+        });
     }
+
     private void setupFileTree() {
         fileTree.setLayoutManager(new LinearLayoutManager(this));
         DefaultItemAnimator anim = new DefaultItemAnimator();
         anim.setAddDuration(180);
         anim.setRemoveDuration(180);
         fileTree.setItemAnimator(anim);
-        buildTree(projectRoot);
+        loadTreeAsync();
         refreshVisible();
+
         adapter = new FileTreeAdapter(visibleNodes, new FileTreeAdapter.OnNodeClick() {
             @Override
             public void onClick(FileNode node) {
@@ -777,14 +1081,14 @@ public class IdeActivity extends AppCompatActivity {
                     int pos = visibleNodes.indexOf(node);
                     node.expanded = !node.expanded;
                     refreshVisible();
-                    if (pos >= 0 && pos < visibleNodes.size()
-                            && visibleNodes.get(pos) == node) {
+                    if (pos >= 0 && pos < visibleNodes.size() && visibleNodes.get(pos) == node) {
                         adapter.notifyItemChanged(pos);
                     }
                 } else {
                     onFileClick(node);
                 }
             }
+
             @Override
             public void onLongClick(FileNode node) {
                 showNodeMenu(node);
@@ -794,7 +1098,8 @@ public class IdeActivity extends AppCompatActivity {
         terminalLog("APK Builder IDE ready.");
         terminalLog("Project: " + projectName);
     }
-    // ============== 鏂囦欢鏍?==============
+
+    // ============== 文件树 ==============
     private void buildTree(File root) {
         allNodes.clear();
         File[] kids = root.listFiles();
@@ -802,6 +1107,7 @@ public class IdeActivity extends AppCompatActivity {
         sortEntries(kids);
         for (File k : kids) addNode(k, 0, null);
     }
+
     private void addNode(File f, int depth, FileNode parent) {
         FileNode n = new FileNode();
         n.name = f.getName();
@@ -819,6 +1125,7 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
+
     private static void sortEntries(File[] arr) {
         Arrays.sort(arr, (a, b) -> {
             if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -826,41 +1133,21 @@ public class IdeActivity extends AppCompatActivity {
             return a.getName().compareToIgnoreCase(b.getName());
         });
     }
+
     private void rebuildTree() {
-        Set<String> expandedPaths = new HashSet<>();
-        for (FileNode n : allNodes) {
-            if (n.isDir && n.expanded) expandedPaths.add(n.file.getAbsolutePath());
-        }
-        allNodes.clear();
-        File[] kids = projectRoot.listFiles();
-        if (kids != null) {
-            sortEntries(kids);
-            for (File k : kids) addNode(k, 0, null);
-        }
-        for (FileNode n : allNodes) {
-            if (n.isDir && expandedPaths.contains(n.file.getAbsolutePath())) {
-                n.expanded = true;
-            }
-        }
-        visibleNodes.clear();
-        for (FileNode n : allNodes) {
-            boolean visible = true;
-            FileNode p = n.parent;
-            while (p != null) {
-                if (!p.expanded) { visible = false; break; }
-                p = p.parent;
-            }
-            if (visible) visibleNodes.add(n);
-        }
-        if (adapter != null) adapter.notifyDataSetChanged();
+        loadTreeAsync();
     }
+
     private void refreshVisible() {
         List<FileNode> newVisible = new ArrayList<>();
         for (FileNode n : allNodes) {
             boolean visible = true;
             FileNode p = n.parent;
             while (p != null) {
-                if (!p.expanded) { visible = false; break; }
+                if (!p.expanded) {
+                    visible = false;
+                    break;
+                }
                 p = p.parent;
             }
             if (visible) newVisible.add(n);
@@ -873,15 +1160,13 @@ public class IdeActivity extends AppCompatActivity {
         int oldSize = visibleNodes.size();
         int newSize = newVisible.size();
         int firstDiff = 0;
-        while (firstDiff < oldSize && firstDiff < newSize
-                && visibleNodes.get(firstDiff) == newVisible.get(firstDiff)) {
+        while (firstDiff < oldSize && firstDiff < newSize && visibleNodes.get(firstDiff) == newVisible.get(firstDiff)) {
             firstDiff++;
         }
         if (firstDiff == oldSize && firstDiff == newSize) return;
         int tailOld = oldSize - 1;
         int tailNew = newSize - 1;
-        while (tailOld >= firstDiff && tailNew >= firstDiff
-                && visibleNodes.get(tailOld) == newVisible.get(tailNew)) {
+        while (tailOld >= firstDiff && tailNew >= firstDiff && visibleNodes.get(tailOld) == newVisible.get(tailNew)) {
             tailOld--;
             tailNew--;
         }
@@ -892,7 +1177,8 @@ public class IdeActivity extends AppCompatActivity {
         if (removeCount > 0) adapter.notifyItemRangeRemoved(firstDiff, removeCount);
         if (insertCount > 0) adapter.notifyItemRangeInserted(firstDiff, insertCount);
     }
-    // ============== 闀挎寜鑿滃崟 ==============
+
+    // ============== 长按菜单 ==============
     private void showNodeMenu(final FileNode node) {
         final List<String> items = new ArrayList<>();
         if (node.isDir) {
@@ -902,6 +1188,7 @@ public class IdeActivity extends AppCompatActivity {
         items.add(getString(R.string.ide_rename));
         items.add(getString(R.string.ide_delete));
         items.add(getString(R.string.ide_copy_path));
+
         new AlertDialog.Builder(this)
                 .setTitle(node.name)
                 .setItems(items.toArray(new String[0]), (d, which) -> {
@@ -915,26 +1202,23 @@ public class IdeActivity extends AppCompatActivity {
                     } else if (action.equals(getString(R.string.ide_delete))) {
                         confirmDelete(node);
                     } else if (action.equals(getString(R.string.ide_copy_path))) {
-                        ClipboardManager cm = (ClipboardManager)
-                                getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                         if (cm != null) {
-                            cm.setPrimaryClip(ClipData.newPlainText(
-                                    "path", node.file.getAbsolutePath()));
+                            cm.setPrimaryClip(ClipData.newPlainText("path", node.file.getAbsolutePath()));
                             toast(getString(R.string.ide_path_copied));
                         }
                     }
                 })
                 .show();
     }
+
     private void promptCreate(final File parentDir, final boolean isFolder) {
         final EditText et = new EditText(this);
-        et.setHint(isFolder ? getString(R.string.ide_foldername_hint)
-                : getString(R.string.ide_filename_hint));
+        et.setHint(isFolder ? getString(R.string.ide_foldername_hint) : getString(R.string.ide_filename_hint));
         et.setInputType(InputType.TYPE_CLASS_TEXT);
         et.setSingleLine(true);
-        String title = (isFolder ? getString(R.string.ide_new_folder)
-                : getString(R.string.ide_new_file))
-                + " 路 " + parentDir.getName();
+        String title = (isFolder ? getString(R.string.ide_new_folder) : getString(R.string.ide_new_file)) + " - " + parentDir.getName();
+
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(et)
@@ -944,11 +1228,8 @@ public class IdeActivity extends AppCompatActivity {
                         toast(getString(R.string.ide_name_empty));
                         return;
                     }
-                    if (name.contains("/") || name.contains("\\")
-                            || name.contains(":") || name.contains("*")
-                            || name.contains("?") || name.contains("\"")
-                            || name.contains("<") || name.contains(">")
-                            || name.contains("|")) {
+                    if (name.contains("/") || name.contains("\\") || name.contains(":") || name.contains("*")
+                            || name.contains("?") || name.contains("\"") || name.contains("<") || name.contains(">") || name.contains("|")) {
                         toast(getString(R.string.ide_name_invalid));
                         return;
                     }
@@ -959,19 +1240,15 @@ public class IdeActivity extends AppCompatActivity {
                     }
                     try {
                         if (isFolder) {
-                            if (!target.mkdirs())
-                                throw new Exception(getString(R.string.ide_create_failed));
+                            if (!target.mkdirs()) throw new Exception(getString(R.string.ide_create_failed));
                         } else {
                             File p = target.getParentFile();
                             if (p != null) p.mkdirs();
-                            if (!target.createNewFile())
-                                throw new Exception(getString(R.string.ide_create_failed));
+                            if (!target.createNewFile()) throw new Exception(getString(R.string.ide_create_failed));
                         }
                         terminalLog("New: " + target.getAbsolutePath());
                         for (FileNode n : allNodes) {
-                            if (n.isDir && n.file.equals(parentDir)) {
-                                n.expanded = true;
-                            }
+                            if (n.isDir && n.file.equals(parentDir)) n.expanded = true;
                         }
                         rebuildTree();
                     } catch (Exception e) {
@@ -981,12 +1258,14 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
+
     private void promptRename(final FileNode node) {
         final EditText et = new EditText(this);
         et.setText(node.name);
         et.setInputType(InputType.TYPE_CLASS_TEXT);
         et.setSingleLine(true);
         et.setSelection(node.name.length());
+
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ide_rename)
                 .setView(et)
@@ -1015,10 +1294,54 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
+
+    // 异步加载文件树，避免主线程卡顿
+    private void loadTreeAsync() {
+        tvEditorPlaceholder.setText(getString(R.string.loading_project));
+        tvEditorPlaceholder.setVisibility(View.VISIBLE);
+
+        new Thread(() -> {
+            List<FileNode> newNodes = new ArrayList<>();
+            scanTree(projectRoot, 0, null, newNodes);
+
+            runOnUiThread(() -> {
+                allNodes.clear();
+                allNodes.addAll(newNodes);
+                refreshVisible();
+                if (adapter != null) adapter.notifyDataSetChanged();
+                if (tabs.isEmpty()) {
+                    tvEditorPlaceholder.setText(getString(R.string.select_file_to_edit));
+                }
+            });
+        }).start();
+    }
+
+    private void scanTree(File root, int depth, FileNode parent, List<FileNode> out) {
+        File[] kids = root.listFiles();
+        if (kids == null) return;
+        sortEntries(kids);
+        for (File k : kids) {
+            String name = k.getName();
+            if (k.isDirectory() && (name.startsWith(".") || name.equals("build") || name.equals("output") || name.equals("node_modules"))) {
+                continue;
+            }
+
+            FileNode n = new FileNode();
+            n.name = name;
+            n.file = k;
+            n.isDir = k.isDirectory();
+            n.depth = depth;
+            n.expanded = false;
+            n.parent = parent;
+            out.add(n);
+
+            if (n.isDir) {
+                scanTree(k, depth + 1, n, out);
+            }
+        }
+    }
     private void confirmDelete(final FileNode node) {
-        String msg = node.isDir
-                ? getString(R.string.ide_delete_folder_msg, node.name)
-                : getString(R.string.ide_delete_file_msg, node.name);
+        String msg = node.isDir ? getString(R.string.ide_delete_folder_msg, node.name) : getString(R.string.ide_delete_file_msg, node.name);
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ide_delete_title)
                 .setMessage(msg)
@@ -1032,6 +1355,7 @@ public class IdeActivity extends AppCompatActivity {
                 .setNegativeButton(R.string.ide_btn_cancel, null)
                 .show();
     }
+
     private void closeTabByPath(String path) {
         for (int i = tabs.size() - 1; i >= 0; i--) {
             EditorTab t = tabs.get(i);
@@ -1040,6 +1364,7 @@ public class IdeActivity extends AppCompatActivity {
             }
         }
     }
+
     private static void deleteRec(File f) {
         if (f == null || !f.exists()) return;
         if (f.isDirectory()) {
@@ -1048,42 +1373,23 @@ public class IdeActivity extends AppCompatActivity {
         }
         f.delete();
     }
-    // ============== 缂栬緫鍣?tab ==============
+
+    // ============== 编辑器 tab ==============
     private void onFileClick(FileNode node) {
-        String path = node.file.getAbsolutePath();
-        for (EditorTab t : tabs) {
-            if (t.path.equals(path)) {
-                selectTab(t);
-                return;
-            }
-        }
-        EditorTab tab = new EditorTab(path, node.name);
-        tabs.add(tab);
-        currentTab = tab;
-        refreshTabBar();
-        showEditor();
-        try {
-            String content = readText(node.file);
-            String mode = modeForFile(node.name);
-            String js = "window.openFile("
-                    + escapeJsString(path) + ","
-                    + escapeJsString(content) + ","
-                    + escapeJsString(mode) + ");";
-            webEditor.evaluateJavascript(js, null);
-            terminalLog("Open: " + path);
-        } catch (Exception e) {
-            toast(getString(R.string.ide_open_failed, e.getMessage()));
-        }
+        Intent intent = new Intent(this, EditorActivity.class);
+        intent.putExtra("path", node.file.getAbsolutePath());
+        startActivity(intent);
     }
+
     private void selectTab(EditorTab tab) {
         currentTab = tab;
         refreshTabBar();
-        webEditor.evaluateJavascript(
-                "window.switchTo(" + escapeJsString(tab.path) + ");", null);
+        webEditor.evaluateJavascript("window.switchTo(" + escapeJsString(tab.path) + ");", null);
+        updateStatusLang(tab.name); // 更新状态栏语言
     }
+
     private void closeTab(EditorTab tab) {
-        webEditor.evaluateJavascript(
-                "window.closeFile(" + escapeJsString(tab.path) + ");", null);
+        webEditor.evaluateJavascript("window.closeFile(" + escapeJsString(tab.path) + ");", null);
         int idx = tabs.indexOf(tab);
         tabs.remove(tab);
         if (currentTab == tab) {
@@ -1093,22 +1399,23 @@ public class IdeActivity extends AppCompatActivity {
             } else {
                 int next = Math.min(idx, tabs.size() - 1);
                 currentTab = tabs.get(next);
-                webEditor.evaluateJavascript(
-                        "window.switchTo(" + escapeJsString(currentTab.path) + ");", null);
+                webEditor.evaluateJavascript("window.switchTo(" + escapeJsString(currentTab.path) + ");", null);
+                updateStatusLang(currentTab.name); // 更新状态栏语言
             }
         }
         refreshTabBar();
     }
+
     private void refreshTabBar() {
         tabBar.removeAllViews();
         for (EditorTab tab : tabs) {
-            View v = getLayoutInflater().inflate(
-                    R.layout.item_editor_tab, tabBar, false);
+            View v = getLayoutInflater().inflate(R.layout.item_editor_tab, tabBar, false);
             ImageView ivIcon = v.findViewById(R.id.ivTabIcon);
             TextView tvName = v.findViewById(R.id.tvTabName);
             ImageButton btnClose = v.findViewById(R.id.btnTabClose);
             ivIcon.setImageResource(iconForName(tab.name));
-            tvName.setText(tab.dirty ? (tab.name + " 鈥?) : tab.name);
+            tvName.setText(tab.dirty ? (tab.name + " •") : tab.name);
+
             if (tab == currentTab) {
                 v.setBackgroundColor(TAB_ACTIVE_BG);
                 tvName.setTextColor(0xFFFFFFFF);
@@ -1118,39 +1425,67 @@ public class IdeActivity extends AppCompatActivity {
             }
             final EditorTab t = tab;
             v.setOnClickListener(vv -> selectTab(t));
-            btnClose.setOnClickListener(vv -> closeTab(t));
+
+            // ==== 拦截关闭，防止丢失代码 ====
+            btnClose.setOnClickListener(vv -> {
+                if (t.dirty) {
+                    new AlertDialog.Builder(this)
+                            .setTitle(getString(R.string.unsaved_title))
+                            .setMessage(getString(R.string.unsaved_msg, t.name))
+                            .setPositiveButton(getString(R.string.save_and_close), (d, w) -> {
+                                selectTab(t); // 切换到该 Tab
+                                webEditor.evaluateJavascript("window.getContent(" + escapeJsString(t.path) + ");", value -> {
+                                    String content = unescapeJs(value);
+                                    try {
+                                        writeText(new File(t.path), content);
+                                        t.dirty = false;
+                                        closeTab(t);
+                                    } catch (Exception e) {
+                                        toast(getString(R.string.ide_save_failed, e.getMessage()));
+                                    }
+                                });
+                            })
+                            .setNegativeButton(getString(R.string.close_without_saving), (d, w) -> closeTab(t))
+                            .setNeutralButton(getString(R.string.cancel), null)
+                            .show();
+                } else {
+                    closeTab(t);
+                }
+            });
             tabBar.addView(v);
         }
     }
+
     private void showEditor() {
         tvEditorPlaceholder.setVisibility(View.GONE);
         webEditor.setVisibility(View.VISIBLE);
     }
+
     private void hideEditor() {
         tvEditorPlaceholder.setVisibility(View.VISIBLE);
         webEditor.setVisibility(View.INVISIBLE);
     }
+
     private void saveCurrentFile() {
         if (currentTab == null) {
             toast(getString(R.string.ide_no_open_file));
             return;
         }
         final EditorTab tab = currentTab;
-        webEditor.evaluateJavascript(
-                "window.getContent(" + escapeJsString(tab.path) + ");",
-                value -> {
-                    String content = unescapeJs(value);
-                    try {
-                        writeText(new File(tab.path), content);
-                        tab.dirty = false;
-                        refreshTabBar();
-                        toast(getString(R.string.ide_saved, tab.name));
-                        terminalLog("Save: " + tab.path);
-                    } catch (Exception e) {
-                        toast(getString(R.string.ide_save_failed, e.getMessage()));
-                    }
-                });
+        webEditor.evaluateJavascript("window.getContent(" + escapeJsString(tab.path) + ");", value -> {
+            String content = unescapeJs(value);
+            try {
+                writeText(new File(tab.path), content);
+                tab.dirty = false;
+                refreshTabBar();
+                toast(getString(R.string.ide_saved, tab.name));
+                terminalLog("Save: " + tab.path);
+            } catch (Exception e) {
+                toast(getString(R.string.ide_save_failed, e.getMessage()));
+            }
+        });
     }
+
     private void saveAllTabs(final Runnable onDone) {
         final List<EditorTab> dirty = new ArrayList<>();
         for (EditorTab t : tabs) if (t.dirty) dirty.add(t);
@@ -1163,27 +1498,29 @@ public class IdeActivity extends AppCompatActivity {
             final String path = t.path;
             final String name = t.name;
             final EditorTab tabRef = t;
-            webEditor.evaluateJavascript(
-                    "window.getContent(" + escapeJsString(path) + ");",
-                    value -> {
-                        String content = unescapeJs(value);
-                        try {
-                            writeText(new File(path), content);
-                            tabRef.dirty = false;
-                            terminalLog("Auto-save: " + path);
-                        } catch (Exception e) {
-                            toast(getString(R.string.ide_save_failed, name));
-                        }
-                        if (--remaining[0] == 0) {
-                            runOnUiThread(() -> {
-                                refreshTabBar();
-                                onDone.run();
-                            });
-                        }
-                    });
+            webEditor.evaluateJavascript("window.getContent(" + escapeJsString(path) + ");", value -> {
+                String content = unescapeJs(value);
+                try {
+                    writeText(new File(path), content);
+                    tabRef.dirty = false;
+                    terminalLog("Auto-save: " + path);
+                } catch (Exception e) {
+                    toast(getString(R.string.ide_save_failed, name));
+                }
+                synchronized (remaining) {
+                    remaining[0]--;
+                    if (remaining[0] == 0) {
+                        runOnUiThread(() -> {
+                            refreshTabBar();
+                            onDone.run();
+                        });
+                    }
+                }
+            });
         }
     }
-    // ============== 鏋勫缓 ==============
+
+    // ============== 构建 ==============
     private void onBuildClicked() {
         if (building) {
             toast(getString(R.string.ide_building));
@@ -1192,59 +1529,105 @@ public class IdeActivity extends AppCompatActivity {
         expandTerminal();
         saveAllTabs(this::startBuild);
     }
+
     private void startBuild() {
         if (building) return;
         building = true;
         setBuildButtonEnabled(false);
+
         tvTerminal.setText("");
+        progressView.hide();
+        btnExportError.setVisibility(View.GONE);
+
         terminalLog("==== Build " + projectName + " ====");
-        ProjectBuilder pb = new ProjectBuilder(this,
-                msg -> runOnUiThread(() -> terminalLog(msg)));
-        pb.build(projectName, new ProjectBuilder.Done() {
+
+        currentBuilder = new ProjectBuilder(this, msg -> runOnUiThread(() -> terminalLog(msg)));
+
+        currentBuilder.setProgressReporter(new ProgressReporter() {
+            @Override
+            public void onStageStart(BuildStage stage) {
+                runOnUiThread(() -> progressView.show(new BuildProgress(stage, 0, "")));
+            }
+            @Override
+            public void onStageProgress(BuildStage stage, int current, int total, String detail) {
+                runOnUiThread(() -> {
+                    int percent = total > 0 ? (current * 100 / total) : 0;
+                    progressView.show(new BuildProgress(stage, percent, detail));
+                });
+            }
+        });
+
+        currentBuilder.build(projectName, new ProjectBuilder.Done() {
             @Override
             public void onSuccess(File apk) {
                 building = false;
                 setBuildButtonEnabled(true);
-                terminalLog("OK " + apk.getAbsolutePath());
+                progressView.hide();
+                tvTerminal.setText("");
                 showBuildResultDialog(apk);
             }
+
             @Override
             public void onError(String message, Exception e) {
                 building = false;
                 setBuildButtonEnabled(true);
-                terminalLog("FAIL " + message);
+                progressView.hide();
+
+                tvTerminal.setText("");
+                terminalLog("❌ Build Failed: " + message);
+                terminalLog("========================================");
+
+                currentProblems.clear();
+                List<ErrorCollector.Line> errors = currentBuilder.getCollectedErrors();
+                int errCount = 0;
+                for (ErrorCollector.Line line : errors) {
+                    if (ErrorCollector.isErrorLine(line.text) || line.text.contains(".java:")) {
+                        currentProblems.add(line);
+                        terminalLog(line.text);
+                        errCount++;
+                    }
+                }
+                problemAdapter.notifyDataSetChanged();
+
+                if (errCount == 0) {
+                    terminalLog("-> Please click 'Export' to get full logs.");
+                } else {
+                    switchPanelTab(1);
+                }
+
+                btnExportError.setVisibility(View.VISIBLE);
                 toast(getString(R.string.ide_build_failed));
             }
         });
     }
+
     private void setBuildButtonEnabled(boolean enabled) {
         btnBuild.setEnabled(enabled);
         btnBuild.setAlpha(enabled ? 1f : 0.4f);
     }
+
     private void showBuildResultDialog(File apk) {
         String path = apk.getAbsolutePath();
         String size = humanSize(apk.length());
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ide_build_success_title)
                 .setMessage(getString(R.string.ide_build_success_msg, path, size))
-                .setPositiveButton(R.string.ide_btn_install,
-                        (d, w) -> installApk(apk))
+                .setPositiveButton(R.string.ide_btn_install, (d, w) -> installApk(apk))
                 .setNeutralButton(R.string.ide_btn_close, null)
                 .show();
     }
+
     private void installApk(File apk) {
         try {
             File priv = new File(getExternalFilesDir(null), "apk");
             if (!priv.exists()) priv.mkdirs();
             File privApk = new File(priv, apk.getName());
-            try (InputStream in = new FileInputStream(apk);
-                 OutputStream out = new FileOutputStream(privApk)) {
+            try (InputStream in = new FileInputStream(apk); OutputStream out = new FileOutputStream(privApk)) {
                 byte[] buf = new byte[8192];
                 int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             }
-            Uri uri = FileProvider.getUriForFile(
-                    this, getPackageName() + ".fileprovider", privApk);
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", privApk);
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(uri, "application/vnd.android.package-archive");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -1255,12 +1638,14 @@ public class IdeActivity extends AppCompatActivity {
             terminalLog("[ERR] install: " + e.getMessage());
         }
     }
+
     private static String humanSize(long n) {
         if (n < 1024) return n + " B";
         if (n < 1024 * 1024) return String.format(Locale.US, "%.1f KB", n / 1024.0);
         return String.format(Locale.US, "%.2f MB", n / 1024.0 / 1024.0);
     }
-    // ============== 宸ュ叿 ==============
+
+    // ============== 工具 ==============
     private static String modeForFile(String name) {
         String n = name.toLowerCase();
         if (n.endsWith(".java")) return "text/x-java";
@@ -1271,17 +1656,18 @@ public class IdeActivity extends AppCompatActivity {
         if (n.endsWith(".css")) return "css";
         return "text/plain";
     }
+
     private static int iconForName(String name) {
         String n = name.toLowerCase();
         if (n.endsWith(".java")) return R.drawable.ic_file_java;
         if (n.endsWith(".json")) return R.drawable.ic_file_json;
         if (n.endsWith(".xml")) return R.drawable.ic_file_xml;
         if (n.endsWith(".html") || n.endsWith(".htm")) return R.drawable.ic_file_html;
-        if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg")
-                || n.endsWith(".gif") || n.endsWith(".webp")
-                || n.endsWith(".bmp")) return R.drawable.ic_file_image;
+        if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".gif") || n.endsWith(".webp") || n.endsWith(".bmp"))
+            return R.drawable.ic_file_image;
         return R.drawable.ic_file_generic;
     }
+
     private static String readText(File f) throws Exception {
         try (InputStream in = new FileInputStream(f)) {
             byte[] buf = new byte[(int) f.length()];
@@ -1294,11 +1680,13 @@ public class IdeActivity extends AppCompatActivity {
             return new String(buf, 0, off, "UTF-8");
         }
     }
+
     private static void writeText(File f, String content) throws Exception {
         try (OutputStream os = new FileOutputStream(f)) {
             os.write(content.getBytes("UTF-8"));
         }
     }
+
     private static String escapeJsString(String s) {
         if (s == null) return "''";
         StringBuilder sb = new StringBuilder("'");
@@ -1316,6 +1704,7 @@ public class IdeActivity extends AppCompatActivity {
         sb.append("'");
         return sb.toString();
     }
+
     private static String unescapeJs(String s) {
         if (s == null || s.equals("null")) return "";
         if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
@@ -1340,8 +1729,7 @@ public class IdeActivity extends AppCompatActivity {
                     case 'u':
                         if (i + 5 < s.length()) {
                             try {
-                                int code = Integer.parseInt(
-                                        s.substring(i + 2, i + 6), 16);
+                                int code = Integer.parseInt(s.substring(i + 2, i + 6), 16);
                                 sb.append((char) code);
                                 i += 6;
                             } catch (NumberFormatException e) {
@@ -1351,8 +1739,7 @@ public class IdeActivity extends AppCompatActivity {
                             sb.append(n); i += 2;
                         }
                         break;
-                    default:
-                        sb.append(n); i += 2;
+                    default: sb.append(n); i += 2;
                 }
             } else {
                 sb.append(c);
@@ -1361,35 +1748,107 @@ public class IdeActivity extends AppCompatActivity {
         }
         return sb.toString();
     }
+
     private void toggleTerminal() {
-        int targetDp = terminalExpanded ? TERMINAL_COLLAPSED_DP : TERMINAL_EXPANDED_DP;
-        ViewGroup.LayoutParams lp = terminalPanel.getLayoutParams();
-        lp.height = dp(targetDp);
-        terminalPanel.setLayoutParams(lp);
         terminalExpanded = !terminalExpanded;
-        tvTerminalArrow.setText(terminalExpanded ? "鈻? : "鈻?);
-        terminalScroll.setVisibility(terminalExpanded ? View.VISIBLE : View.GONE);
+        ViewGroup.LayoutParams lp = terminalPanel.getLayoutParams();
+        if (terminalExpanded) {
+            lp.height = dp(220);
+            terminalScroll.setVisibility(View.VISIBLE);
+            tvTerminalArrow.setText("▼");
+        } else {
+            lp.height = dp(40); // 确保收起时高度是 40dp
+            terminalScroll.setVisibility(View.GONE);
+            tvTerminalArrow.setText("▲");
+        }
+        terminalPanel.setLayoutParams(lp);
+        terminalPanel.requestLayout(); // 强制重新布局，解决收不起来的问题
     }
+
     private void expandTerminal() {
         if (!terminalExpanded) toggleTerminal();
     }
+
     private void terminalLog(String s) {
-        tvTerminal.append(s + "\n");
+        if (tvTerminal == null) return;
+
+        if (s == null || s.isEmpty()) {
+            tvTerminal.append("\n");
+            return;
+        }
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("([^\\s:]+\\.java):(\\d+)");
+        java.util.regex.Matcher matcher = pattern.matcher(s);
+
+        android.text.SpannableString spannable = new android.text.SpannableString(s);
+        boolean hasLink = false;
+
+        while (matcher.find()) {
+            hasLink = true;
+            String filePath = matcher.group(1);
+            String lineStr = matcher.group(2);
+            int start = matcher.start();
+            int end = matcher.end();
+
+            android.text.style.ClickableSpan clickSpan = new android.text.style.ClickableSpan() {
+                @Override
+                public void onClick(@androidx.annotation.NonNull View widget) {
+                    try {
+                        int line = Integer.parseInt(lineStr);
+                        File targetFile = new File(filePath);
+                        if (!targetFile.exists()) {
+                            targetFile = new File(projectRoot, filePath);
+                        }
+
+                        if (targetFile.exists()) {
+                            openFileAtLine(targetFile.getAbsolutePath(), line);
+                            toast(getString(R.string.jump_to, targetFile.getName(), line));
+                        } else {
+                            toast(getString(R.string.file_not_found, filePath));
+                        }
+                    } catch (Exception e) {
+                        toast(getString(R.string.jump_failed, e.getMessage()));
+                    }
+                }
+
+                @Override
+                public void updateDrawState(android.text.TextPaint ds) {
+                    super.updateDrawState(ds);
+                    ds.setColor(0xFF4EC9B0);
+                    ds.setUnderlineText(true);
+                }
+            };
+
+            spannable.setSpan(clickSpan, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+
+        tvTerminal.append(spannable);
+        tvTerminal.append("\n");
+
+        if (hasLink) {
+            tvTerminal.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
+            tvTerminal.setHighlightColor(android.graphics.Color.TRANSPARENT);
+        }
+
         terminalScroll.post(() -> terminalScroll.fullScroll(View.FOCUS_DOWN));
     }
-    // ============== 鑿滃崟 ==============
+
+    // ============== 菜单 ==============
     private void showMenu() {
         final List<String> items = new ArrayList<>();
         items.add(getString(R.string.ide_menu_settings));
         items.add(getString(R.string.ide_menu_signing));
         items.add(getString(R.string.ide_menu_toolchain));
+        items.add(getString(R.string.ide_menu_terminal));
         items.add(getString(R.string.ide_menu_language));
         items.add(getString(R.string.ide_menu_copy_log));
         items.add(getString(R.string.ide_menu_clear_log));
         items.add(getString(R.string.ide_menu_extensions));
-        final int BASE_COUNT = 7;
+
+        final int BASE_COUNT = 8;
+
         for (ExtensionManager.MenuItem m : extMenuItems) {
-            items.add("猡?" + m.title);
+            items.add("🧩 " + m.title);
         }
         new AlertDialog.Builder(this)
                 .setItems(items.toArray(new String[0]), (d, which) -> {
@@ -1405,19 +1864,21 @@ public class IdeActivity extends AppCompatActivity {
                         expandTerminal();
                         testToolchain();
                     } else if (which == 3) {
+                        Intent i = new Intent(this, TerminalActivity.class);
+                        i.putExtra("project", projectName);
+                        startActivity(i);
+                    } else if (which == 4) {
                         LocaleHelper.toggle(this);
                         recreate();
-                    } else if (which == 4) {
-                        ClipboardManager cm = (ClipboardManager)
-                                getSystemService(Context.CLIPBOARD_SERVICE);
+                    } else if (which == 5) {
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                         if (cm != null) {
-                            cm.setPrimaryClip(ClipData.newPlainText(
-                                    "terminal", tvTerminal.getText().toString()));
+                            cm.setPrimaryClip(ClipData.newPlainText("terminal", tvTerminal.getText().toString()));
                             toast(getString(R.string.ide_copied));
                         }
-                    } else if (which == 5) {
-                        tvTerminal.setText("");
                     } else if (which == 6) {
+                        tvTerminal.setText("");
+                    } else if (which == 7) {
                         startActivity(new Intent(this, ExtensionActivity.class));
                     } else if (which >= BASE_COUNT) {
                         int extIdx = which - BASE_COUNT;
@@ -1429,6 +1890,7 @@ public class IdeActivity extends AppCompatActivity {
                 })
                 .show();
     }
+
     private void testToolchain() {
         new Thread(() -> {
             ToolchainManager tm = new ToolchainManager(IdeActivity.this);
@@ -1448,15 +1910,19 @@ public class IdeActivity extends AppCompatActivity {
             }
         }).start();
     }
+
     private void logAsync(String s) {
         runOnUiThread(() -> terminalLog(s));
     }
+
     private int dp(int d) {
         return Math.round(d * getResources().getDisplayMetrics().density);
     }
+
     private void toast(String s) {
         Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
     }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -1471,25 +1937,28 @@ public class IdeActivity extends AppCompatActivity {
             extSidebarPanels.addAll(mgr.getSidebarPanels());
             refreshExtPanel();
             renderExtensionPanels();
-            terminalLog("鎵╁睍宸插埛鏂帮細鑿滃崟 " + extMenuItems.size()
-                    + " 椤癸紝渚ц竟鏍忛潰鏉?" + extSidebarPanels.size() + " 涓?);
+            terminalLog("Extension refreshed: " + extMenuItems.size() + " menus, " + extSidebarPanels.size() + " panels");
         }
     }
+
     @Override
     protected void onPause() {
         super.onPause();
         ExtensionManager.get(this).setActivity(null);
     }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         ExtensionManager.get(this).setCurrentProject(null);
     }
+
     public class Bridge {
         @JavascriptInterface
         public void onReady() {
             runOnUiThread(() -> {});
         }
+
         @JavascriptInterface
         public void onDocChanged(String path) {
             runOnUiThread(() -> {
@@ -1499,6 +1968,15 @@ public class IdeActivity extends AppCompatActivity {
                         refreshTabBar();
                         return;
                     }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void onCursorChange(final int line, final int col) {
+            runOnUiThread(() -> {
+                if (tvStatusCursor != null) {
+                    tvStatusCursor.setText("Ln " + line + ", Col " + col);
                 }
             });
         }

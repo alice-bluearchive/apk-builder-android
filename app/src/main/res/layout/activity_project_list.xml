@@ -3,47 +3,47 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="#1E1E1E">
 
-    <!-- 顶部栏 -->
+    <!-- 顶部导航栏 (VSCode 风格) -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?attr/colorPrimary"
-        android:elevation="2dp"
+        android:layout_height="56dp"
+        android:background="#252526"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="4dp"
-        android:paddingBottom="12dp">
-
-        <ImageView
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginEnd="10dp"
-            android:src="@mipmap/ic_launcher"
-            android:contentDescription="@string/app_name" />
+        android:paddingHorizontal="16dp">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/projects_title"
-            android:textColor="?attr/colorOnPrimary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:text="APK Builder"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05" />
 
-        <Button
+        <!-- 语言切换 -->
+        <TextView
             android:id="@+id/btnLang"
-            style="?attr/borderlessButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:text="@string/lang_toggle"
-            android:textColor="?attr/colorOnPrimary"
-            android:textSize="13sp" />
+            android:text="EN"
+            android:textColor="#CCCCCC"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:padding="12dp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- 新建项目 -->
+        <ImageButton
+            android:id="@+id/btnNewProject"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_add"
+            app:tint="#4EC9B0" />
     </LinearLayout>
 
     <!-- 路径提示 -->
@@ -51,65 +51,62 @@
         android:id="@+id/tvBasePath"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="6dp"
-        android:text=""
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="11sp" />
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:text="@string/workspace_hint"
+        android:textColor="#858585"
+        android:textSize="12sp"
+        android:fontFamily="monospace" />
 
-    <!-- 新建按钮 -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnNewProject"
+    <View
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="16dp"
-        android:text="@string/btn_new_project"
-        android:textSize="15sp"
-        android:textStyle="bold"
-        app:cornerRadius="26dp"
-        app:icon="@android:drawable/ic_input_add"
-        app:iconGravity="textStart" />
+        android:layout_height="1dp"
+        android:background="#333333" />
 
-    <!-- 列表 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/listProjects"
+    <!-- 列表容器 -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="12dp" />
+        android:layout_weight="1">
 
-    <!-- 空状态 -->
-    <LinearLayout
-        android:id="@+id/emptyState"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="32dp"
-        android:visibility="gone">
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/listProjects"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="12dp" />
 
-        <TextView
+        <!-- 空状态 -->
+        <LinearLayout
+            android:id="@+id/emptyState"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📦"
-            android:textSize="64sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_gravity="center"
             android:gravity="center"
-            android:text="@string/no_projects"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="14sp" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📁"
+                android:textSize="48sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/no_projects"
+                android:textColor="#AAAAAA"
+                android:textSize="16sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/click_plus_to_create"
+                android:textColor="#666666"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </FrameLayout>
 </LinearLayout>

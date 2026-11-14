@@ -4,6 +4,15 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import com.example.androidstudio.build.BuildConfig;
+import com.example.androidstudio.build.BuildErrorExporter;
+import com.example.androidstudio.build.BuildStage;
+import com.example.androidstudio.build.ErrorCollector;
+import com.example.androidstudio.build.GradleConfigParser;
+import com.example.androidstudio.build.ProgressReporter;
+import com.example.androidstudio.build.ProjectLayout;
+
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -13,36 +22,48 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProjectBuilder {
-
-    public interface Callback {
-        void log(String msg);
-    }
-
-    public interface Done {
-        void onSuccess(File apk);
-        void onError(String message, Exception e);
-    }
+    public interface Callback { void log(String msg); }
+    public interface Done { void onSuccess(File apk); void onError(String message, Exception e); }
 
     private final Context ctx;
     private final Callback cb;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private ProgressReporter reporter;
+    private ErrorCollector errorCollector;
+    private ProjectLayout layout;
+    private BuildConfig parsedConfig;
+    private Throwable lastFatal;
 
     public ProjectBuilder(Context ctx, Callback cb) {
         this.ctx = ctx.getApplicationContext();
         this.cb = cb == null ? s -> {} : cb;
     }
 
+    public void setProgressReporter(ProgressReporter reporter) { this.reporter = reporter; }
+
     public void build(final String projectName, final Done done) {
         new Thread(() -> {
             try {
                 File apk = doBuild(projectName);
                 mainHandler.post(() -> done.onSuccess(apk));
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 e.printStackTrace();
-                final String msg = e.getClass().getSimpleName() + ": " + e.getMessage();
-                mainHandler.post(() -> done.onError(msg, e));
+                lastFatal = e;
+                final String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                final Exception err = (e instanceof Exception) ? (Exception) e : new Exception(e);
+                mainHandler.post(() -> done.onError(msg, err));
             }
         }, "ProjectBuilder").start();
+    }
+
+    public File exportErrorReport() throws Exception {
+        if (errorCollector == null) return null;
+        return BuildErrorExporter.export(layout, parsedConfig, errorCollector, lastFatal);
+    }
+
+    public List<ErrorCollector.Line> getCollectedErrors() {
+        return errorCollector == null ? new ArrayList<>() : errorCollector.all();
     }
 
     private File doBuild(String projectName) throws Exception {
@@ -50,22 +71,26 @@ public class ProjectBuilder {
         File projDir = ProjectStore.dir(projectName);
         SigningConfig signingConfig = SigningConfig.from(projDir, cfg);
 
+        errorCollector = new ErrorCollector();
+        layout = ProjectLayout.detect(projDir);
+
+        try {
+            parsedConfig = GradleConfigParser.parse(layout);
+            if (parsedConfig.applicationId != null && !parsedConfig.applicationId.isEmpty()) cfg.pkg = parsedConfig.applicationId;
+        } catch (Exception e) {
+            parsedConfig = new BuildConfig();
+            parsedConfig.applicationId = cfg.pkg;
+        }
+
         log("==== 开始构建: " + projectName + " ====");
         log("模式  : " + cfg.mode);
         log("包名  : " + cfg.pkg);
-        log("应用名: " + cfg.appName);
-        if (signingConfig.signingEnabled) {
-            log("签名  : 自定义 keystore (" + cfg.keystoreType + ")");
-        } else {
-            log("签名  : debug 默认");
-        }
 
         List<String> perms = new ArrayList<>();
         if (cfg.permInternet) perms.add("INTERNET");
         if (cfg.permStorage) perms.add("READ_EXTERNAL_STORAGE");
         if (cfg.permCamera) perms.add("CAMERA");
         if (cfg.permLocation) perms.add("ACCESS_FINE_LOCATION");
-        if (!perms.isEmpty()) log("权限  : " + perms);
 
         File icon = null;
         if (cfg.iconFile != null && !cfg.iconFile.isEmpty()) {
@@ -74,78 +99,70 @@ public class ProjectBuilder {
         }
 
         File androidJar = ensureAndroidJar();
-
         ToolchainManager tm = new ToolchainManager(ctx);
         ApkBuilder builder = new ApkBuilder(ctx, tm, this::log);
 
         if (TemplateManager.TYPE_HTML.equals(cfg.mode)) {
-            File idx = new File(projDir, "src/index.html");
-            if (!idx.exists()) throw new IOException("缺少 src/index.html");
-            log("--- HTML 模式 ---");
-            return builder.build(idx, cfg.pkg, cfg.appName, icon, perms, signingConfig);
+            File idx = new File(projDir, "src/main/assets/index.html");
+            if (!idx.exists()) idx = new File(projDir, "src/index.html"); // 兼容老位置
+            if (!idx.exists()) throw new IOException("缺少 index.html");
+            return builder.build(idx, cfg.pkg, cfg.appName, icon, perms, signingConfig, reporter);
         } else {
             return buildJavaProject(builder, projDir, androidJar, cfg, icon, signingConfig);
         }
     }
 
-    private File buildJavaProject(ApkBuilder builder, File projDir,
-                                  File androidJar, ProjectConfig cfg,
-                                  File icon, SigningConfig signingConfig) throws Exception {
-
+    private File buildJavaProject(ApkBuilder builder, File projDir, File androidJar, ProjectConfig cfg, File icon, SigningConfig signingConfig) throws Exception {
         log("--- Step 0: 生成 R.java ---");
         File genDir = new File(ctx.getCacheDir(), "gen");
-        deleteRec(genDir);
+        ProjectStore.deleteRec(genDir);
         genDir.mkdirs();
-        builder.generateRJava(projDir, genDir);
 
+        builder.generateRJava(projDir, genDir, cfg.pkg);
+
+        File sourceRoot = layout.isGradle() ? layout.javaSrc : new File(projDir, "src");
         List<File> sources = new ArrayList<>();
-        collectJava(new File(projDir, "src"), sources);
+        collectJava(sourceRoot, sources);
         collectJava(genDir, sources);
-        log("Java 源文件: " + sources.size() + " 个");
 
-        log("--- Step 1: ECJ 编译 ---");
+        boolean hasR = false;
+        for (File f : sources) {
+            if (f.getName().equals("R.java")) { hasR = true; log("✅ 找到 R.java"); break; }
+        }
+        if (!hasR) throw new Exception("R.java 生成失败！请检查 AndroidManifest.xml 或 res 目录。");
+
+        if (reporter != null) reporter.onStageStart(BuildStage.ECJ);
         EcjCompiler ecj = new EcjCompiler(ctx, this::log);
         File classOut = new File(ctx.getCacheDir(), "class_out");
-        deleteRec(classOut);
+        ProjectStore.deleteRec(classOut);
         classOut.mkdirs();
         boolean ok = ecj.compileFiles(sources, classOut, androidJar);
+        if (reporter != null) reporter.onStageEnd(BuildStage.ECJ);
         if (!ok) throw new Exception("ECJ 编译失败");
 
-        log("--- Step 2: D8 转 dex ---");
+        if (reporter != null) reporter.onStageStart(BuildStage.D8);
         D8Wrapper d8 = new D8Wrapper(this::log);
         File dexOut = new File(ctx.getCacheDir(), "dex_out");
-        deleteRec(dexOut);
+        ProjectStore.deleteRec(dexOut);
         dexOut.mkdirs();
         d8.classToDex(classOut, androidJar, dexOut);
+        if (reporter != null) reporter.onStageEnd(BuildStage.D8);
 
         File[] dexes = dexOut.listFiles();
-        if (dexes == null) throw new Exception("D8 输出为空");
         List<File> dexList = new ArrayList<>();
-        for (File d : dexes) {
-            if (d.getName().endsWith(".dex")) dexList.add(d);
-        }
+        if (dexes != null) for (File d : dexes) if (d.getName().endsWith(".dex")) dexList.add(d);
         if (dexList.isEmpty()) throw new Exception("D8 没生成 dex");
-        log("生成 " + dexList.size() + " 个 dex");
 
-        log("--- Step 3: 打包 APK ---");
-        return builder.buildJavaProject(
-                projDir, dexList.toArray(new File[0]), icon, cfg.appName,
-                signingConfig);
+        return builder.buildJavaProject(projDir, dexList.toArray(new File[0]), icon, cfg.appName, signingConfig, reporter);
     }
 
     private File ensureAndroidJar() throws IOException {
-        File cached = new File(ctx.getFilesDir(), "android.jar");
-        if (cached.exists() && cached.length() > 1_000_000) {
-            log("android.jar 已就绪: " + cached.length() + " 字节");
-            return cached;
-        }
-        log("首次解压 android.jar.zip ...");
-        long t0 = System.currentTimeMillis();
+        File jar = new File(ctx.getCacheDir(), "android_build.jar");
+        if (jar.exists() && jar.length() > 1_000_000) return jar;
+
         try (InputStream is = ctx.getAssets().open("template/android.jar.zip");
-             java.util.zip.ZipInputStream zis =
-                     new java.util.zip.ZipInputStream(
-                             new java.io.BufferedInputStream(is));
-             OutputStream os = new FileOutputStream(cached)) {
+             java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new BufferedInputStream(is));
+             OutputStream os = new FileOutputStream(jar)) {
             byte[] buf = new byte[65536];
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
@@ -155,10 +172,7 @@ public class ProjectBuilder {
                 break;
             }
         }
-        long dt = System.currentTimeMillis() - t0;
-        log("android.jar 解压完成: " + cached.length()
-                + " 字节, 耗时 " + (dt / 1000) + "s");
-        return cached;
+        return jar;
     }
 
     private static void collectJava(File dir, List<File> out) {
@@ -171,17 +185,17 @@ public class ProjectBuilder {
         }
     }
 
-    private static void deleteRec(File f) {
-        if (f == null || !f.exists()) return;
-        if (f.isDirectory()) {
-            File[] kids = f.listFiles();
-            if (kids != null) for (File k : kids) deleteRec(k);
-        }
-        f.delete();
+    private void log(String s) {
+        cb.log(s);
+        if (errorCollector != null) errorCollector.append(getStageFromText(s), s);
     }
 
-    private void log(String s) {
-        android.util.Log.d("APKBUILDER", s);
-        cb.log(s);
+    private BuildStage getStageFromText(String s) {
+        if (s.contains("ECJ")) return BuildStage.ECJ;
+        if (s.contains("D8")) return BuildStage.D8;
+        if (s.contains("aapt2")) return BuildStage.AAPT2;
+        if (s.contains("zipalign")) return BuildStage.ZIPALIGN;
+        if (s.contains("签名")) return BuildStage.SIGN;
+        return null;
     }
 }

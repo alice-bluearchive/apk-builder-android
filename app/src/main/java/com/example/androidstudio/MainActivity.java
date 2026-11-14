@@ -5,9 +5,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
-import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -15,6 +14,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.materialswitch.MaterialSwitch;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -27,10 +27,13 @@ public class MainActivity extends AppCompatActivity {
 
     private EditText etPackage, etAppName;
     private MaterialButton btnPickIcon;
-    private Button btnBack, btnLang;
+    private ImageButton btnBack;
+    private TextView btnLang;
     private ImageView ivIcon;
-    private CheckBox permInternet, permStorage, permCamera, permLocation;
-    private TextView tvIconName, tvProjectName;
+
+    // 适配新的 MaterialSwitch
+    private MaterialSwitch permInternet, permStorage, permCamera, permLocation;
+    private TextView tvIconName;
 
     private File pickedIcon = null;
     private String projectName = null;
@@ -46,19 +49,18 @@ public class MainActivity extends AppCompatActivity {
         btnLang = findViewById(R.id.btnLang);
         btnBack = findViewById(R.id.btnBack);
         ivIcon = findViewById(R.id.ivIcon);
+
+        // 绑定 MaterialSwitch
         permInternet = findViewById(R.id.permInternet);
         permStorage = findViewById(R.id.permStorage);
         permCamera = findViewById(R.id.permCamera);
         permLocation = findViewById(R.id.permLocation);
         tvIconName = findViewById(R.id.tvIconName);
-        tvProjectName = findViewById(R.id.tvProjectName);
 
         projectName = getIntent().getStringExtra("project");
         if (projectName != null) {
-            tvProjectName.setText(projectName);
+            // tvProjectName 已被移除，由顶部标题栏代替
             loadProjectConfig();
-        } else {
-            tvProjectName.setText("(no project)");
         }
 
         btnBack.setOnClickListener(v -> {
@@ -66,7 +68,10 @@ public class MainActivity extends AppCompatActivity {
             finish();
         });
 
-        btnLang.setOnClickListener(v -> LocaleHelper.toggle(this));
+        btnLang.setOnClickListener(v -> {
+            LocaleHelper.toggle(this);
+            recreate(); // 切换语言后重建界面
+        });
 
         btnPickIcon.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -95,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
                 if (f.exists()) {
                     pickedIcon = f;
                     ivIcon.setImageBitmap(BitmapFactory.decodeFile(f.getAbsolutePath()));
-                    tvIconName.setText(getString(R.string.icon_selected, f.getName()));
+                    tvIconName.setText(f.getName());
                 }
             }
         } catch (Exception e) {
@@ -109,6 +114,8 @@ public class MainActivity extends AppCompatActivity {
             ProjectConfig cfg = ProjectStore.loadConfig(projectName);
             cfg.pkg = etPackage.getText().toString().trim();
             cfg.appName = etAppName.getText().toString().trim();
+
+            // 获取开关状态
             cfg.permInternet = permInternet.isChecked();
             cfg.permStorage = permStorage.isChecked();
             cfg.permCamera = permCamera.isChecked();
@@ -156,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
 
                 pickedIcon = dst;
                 ivIcon.setImageBitmap(BitmapFactory.decodeFile(dst.getAbsolutePath()));
-                tvIconName.setText(getString(R.string.icon_selected, "picked_icon.png"));
+                tvIconName.setText("picked_icon.png");
                 Toast.makeText(this, "图标已选择", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 Toast.makeText(this, "图标加载失败", Toast.LENGTH_SHORT).show();

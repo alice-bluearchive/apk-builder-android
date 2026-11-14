@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC000000"
+    android:gravity="top|center_horizontal"
+    android:paddingTop="80dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- 居中的搜索卡片 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:orientation="vertical"
+        android:background="#252526"
+        android:elevation="8dp"
+        android:padding="8dp">
+
+        <!-- 输入框 -->
+        <EditText
+            android:id="@+id/etCommandInput"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@null"
+            android:hint="Type a command or search files... (e.g. > build)"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#858585"
+            android:textSize="16sp"
+            android:singleLine="true"
+            android:imeOptions="actionDone"
+            android:paddingHorizontal="12dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333" />
+
+        <!-- 命令列表 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/listCommands"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxHeight="300dp"
+            android:paddingVertical="8dp" />
+    </LinearLayout>
+</LinearLayout>
